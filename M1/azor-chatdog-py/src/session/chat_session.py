@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Any, Union
+from typing import List, Any, Optional, Union
 import os
 from files import session_files
 from files.wal import append_to_wal
@@ -20,10 +20,12 @@ ENGINE_MAPPING = {
 class ChatSession:
     """
     Manages everything related to a single chat session.
-    Encapsulates session ID, conversation history, assistant, and LLM chat session.
+    Encapsulates session ID, conversation history, assistant, LLM chat session, and session title.
     """
     
-    def __init__(self, assistant: Assistant, session_id: str | None = None, history: List[Any] | None = None):
+    DEFAULT_TITLE = "New Session"
+
+    def __init__(self, assistant: Assistant, session_id: str | None = None, history: List[Any] | None = None, title: str | None = None):
         """
         Initialize a chat session.
         
@@ -31,10 +33,12 @@ class ChatSession:
             assistant: Assistant instance that defines the behavior and model for this session
             session_id: Unique session identifier. If None, generates a new UUID.
             history: Initial conversation history. If None, starts empty.
+            title: Human-readable title of the session.
         """
         self.assistant = assistant
         self.session_id = session_id or str(uuid.uuid4())
         self._history = history or []
+        self.title = title or self.DEFAULT_TITLE
         self._llm_client: Union[GeminiLLMClient, LlamaClient, None] = None
         self._llm_chat_session = None
         self._max_context_tokens = 32768
@@ -77,17 +81,29 @@ class ChatSession:
         Returns:
             tuple: (ChatSession object or None, error_message or None)
         """
-        history, error = session_files.load_session_history(session_id)
-        
-        if error:
-            return None, error
-        
-        session = cls(assistant=assistant, session_id=session_id, history=history)
-        return session, None
+     
+        try:
+            result = session_files.load_session_history(session_id)
+            
+            # Handle backward compatibility if load_session_history returns 2 values
+            if len(result) == 2:
+                history, error = result
+                title = None
+            else:
+                history, title, error = result
+
+            if error:
+                return None, error
+            
+            session = cls(assistant=assistant, session_id=session_id, history=history, title=title)
+            return session, None
+            
+        except ValueError as e:
+            return None, f"Error unpacking session data: {e}"
     
     def save_to_file(self) -> tuple[bool, str | None]:
         """
-        Saves this session to disk.
+        Saves this session to disk including the title.
         Only saves if history has at least one complete exchange.
         
         Returns:
@@ -101,29 +117,55 @@ class ChatSession:
             self.session_id, 
             self._history, 
             self.assistant.system_prompt, 
-            self._llm_client.get_model_name()
+            self._llm_client.get_model_name(),
+            title=self.title  # Added title argument
         )
     
-    def send_message(self, text: str):
+    def rename(self, new_title: str) -> bool:
+        """
+        Renames the current session and saves the change.
+        
+        Args:
+            new_title: The new title string.
+            
+        Returns:
+            bool: True if save was successful.
+        """
+        self.title = new_title
+        success, _ = self.save_to_file()
+        return success
+
+    def send_message(self, text: str) -> Any:
         """
         Sends a message to the LLM and returns the response.
-        Updates internal history automatically and logs to WAL.
+        Updates internal history (synchronizes with LLM chat session) and logs to WAL.
+        Auto-generates title by LLM after the first response.
         
         Args:
             text: User's message
             
         Returns:
-            Response object from Google GenAI
+            Response object from Google GenAI (lub równoważny obiekt z AzorAssistant)
         """
         if not self._llm_chat_session:
             raise RuntimeError("LLM session not initialized")
         
+        # 1. Wysłanie wiadomości i odebranie odpowiedzi
         response = self._llm_chat_session.send_message(text)
         
-        # Sync history after message
+        # 2. Sync history po wiadomości
         self._history = self._llm_chat_session.get_history()
         
-        # Log to WAL
+        # 3. LOGIKA AUTOMATYCZNEGO TYTUŁOWANIA PRZEZ LLM
+        # Jeśli tytuł jest domyślny ORAZ historia ma 2 elementy (pierwsza pełna wymiana)
+        if self.title == self.DEFAULT_TITLE and len(self._history) == 2:
+            new_title = self._generate_title_from_history()
+            if new_title:
+                self.title = new_title
+                # Utrwal tytuł natychmiast na dysku
+                self.save_to_file()
+        
+        # 4. Log do WAL
         total_tokens = self.count_tokens()
         success, error = append_to_wal(
             session_id=self.session_id,
@@ -135,7 +177,6 @@ class ChatSession:
         
         if not success and error:
             # We don't want to fail the entire message sending because of WAL issues
-            # Just log the error to stderr or similar - but for now we'll silently continue
             pass
         
         return response
@@ -216,6 +257,64 @@ class ChatSession:
         remaining_tokens = self._max_context_tokens - total_tokens
         max_tokens = self._max_context_tokens
         return total_tokens, remaining_tokens, max_tokens
+    
+    def _generate_title_from_history(self) -> Optional[str]:
+        """
+        Generuje krótki tytuł wątku na podstawie pierwszej wymiany, 
+        używając niezależnego zapytania do LLM.
+        Tytuł jest jednozdaniowy, bez znaków interpunkcyjnych.
+        """
+        # Historia musi mieć dokładnie 2 elementy: Wiadomość użytkownika [0] i odpowiedź asystenta [1]
+        if len(self._history) != 2:
+            return None
+        
+        # Sprawdzamy, czy klient LLM jest dostępny
+        if not self._llm_client:
+            return None
+
+        # 1. Ekstrakcja pierwszej wymiany z formatu {"role": "...", "parts": [{"text": "..."}]}
+        try:
+            # Poprawny dostęp do treści wiadomości przez klucze 'parts' i 'text'
+            first_user_message = self._history[0]['parts'][0]['text']
+            first_assistant_response = self._history[1]['parts'][0]['text']
+        except (KeyError, IndexError):
+            # Logowanie lub ignorowanie błędu, jeśli format historii jest nieprawidłowy
+            return None
+        
+        # 2. Konstrukcja promptu do generowania tytułu
+        titling_prompt = (
+            "Na podstawie poniższego dialogu, wygeneruj krótki, jednozdaniowy tytuł wątku. "
+            "Tytuł musi być bez znaków interpunkcyjnych i oparty na treści odpowiedzi asystenta. "
+            "Dialog:\n"
+            f"UŻYTKOWNIK: {first_user_message}\n"
+            f"ASYSTENT: {first_assistant_response}"
+        )
+        
+        try:
+            # 3. Wywołanie niezależnej metody LLM
+            # Wymagane jest, aby self._llm_client.generate_title_text() zwracał czysty tekst.
+            title_response = self._llm_client.generate_title_text(
+                prompt=titling_prompt
+            )
+
+            # 4. Czyszczenie i formatowanie
+            cleaned_title = title_response.strip()
+            
+            # Usuwanie końcowych znaków interpunkcyjnych (dla bezpieczeństwa, jeśli LLM ich użyje)
+            if cleaned_title and cleaned_title[-1] in ('.', '!', '?', ','):
+                cleaned_title = cleaned_title[:-1].strip()
+            
+            # Upewnienie się, że tytuł nie jest pusty
+            if not cleaned_title:
+                return None
+            
+            return cleaned_title
+            
+        except Exception as e:
+            # Obsługa wszelkich innych błędów związanych z API lub generowaniem
+            # Możesz użyć konsoli do logowania błędu, jeśli jest importowana
+            # console.print_error(f"Ostrzeżenie: Nie udało się wygenerować automatycznego tytułu: {e}")
+            return None
     
     @property
     def assistant_name(self) -> str:

@@ -87,6 +87,7 @@ class GeminiLLMClient:
         if not api_key:
             raise ValueError("API key cannot be empty or None")
         
+        self.system_instruction = ""
         self.model_name = model_name
         self.api_key = api_key
         
@@ -157,6 +158,8 @@ class GeminiLLMClient:
         """
         if not self._client:
             raise RuntimeError("LLM client not initialized")
+        
+        self.system_instruction = system_instruction
         
         # Convert universal dict format to Gemini Content objects
         gemini_history = []
@@ -244,6 +247,49 @@ class GeminiLLMClient:
             masked_key = f"{self.api_key[:4]}...{self.api_key[-4:]}"
         
         return f"✅ Klient Gemini gotowy do użycia (Model: {self.model_name}, Key: {masked_key})"
+    
+    def generate_title_text(self, prompt: str) -> str:
+        """
+        Generates text (title) based on a prompt using the model's single-turn API.
+        
+        Args:
+            prompt: Prompt text containing the request for the title.
+            
+        Returns:
+            The generated title text.
+        """
+        if not self._client:
+            raise RuntimeError("LLM client not initialized")
+        
+        # Ustawienie instrukcji systemowej, która ma wymusić krótki i czysty tytuł
+        system_instruction = (
+            "Jesteś modułem odpowiedzialnym wyłącznie za generowanie krótkich, "
+            "jednozdaniowych tytułów wątków. Odpowiedz tylko tytułem, bez otoczki, "
+            "znaków interpunkcyjnych i dodatkowych komentarzy."
+        )
+
+        try:
+            response = self._client.models.generate_content(
+                model=self.model_name,
+                contents=[prompt],
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    # Opcjonalnie można ustawić niższą temperaturę dla bardziej deterministycznych tytułów
+                    temperature=0.1 
+                )
+            )
+            
+            # Wróć czysty tekst
+            return response.text
+            
+        except Exception as e:
+            # W przypadku błędu, zwrócenie pustego ciągu znaków (lub rzucenie wyjątku)
+            console.print_error(f"Błąd podczas generowania tytułu: {e}")
+            raise
+        
+    def get_system_prompt(self) -> str:
+        """Returns the system instruction used for the current chat session."""
+        return self.system_instruction
     
     @property
     def client(self):

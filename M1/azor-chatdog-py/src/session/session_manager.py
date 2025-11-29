@@ -2,6 +2,7 @@ from cli import console
 from .chat_session import ChatSession
 from assistant import create_azor_assistant
 from files import session_files
+from typing import List, Dict, Any 
 
 
 class SessionManager:
@@ -136,27 +137,36 @@ class SessionManager:
         Returns:
             ChatSession: The initialized session
         """
-        if cli_session_id:
-            assistant = create_azor_assistant()
+        # POPRAWKA: Przeniesienie definicji na początek funkcji
+        assistant = create_azor_assistant()
+
+        if cli_session_id :
+            # Usunięto powtórzoną definicję assistant = create_azor_assistant()
             session, error = ChatSession.load_from_file(assistant=assistant, session_id=cli_session_id)
             
             if error:
                 console.print_error(error)
                 # Fallback to new session
                 session = ChatSession(assistant=assistant)
-                console.print_info(f"Rozpoczęto nową sesję z ID: {session.session_id}")
-            
+                console.print_info(f"Rozpoczęto nową sesję. ID: {session.session_id}")
+            else:
+                # DODANO: Wyświetlenie tytułu przy ładowaniu
+                console.print_info(f"Wczytano sesję '{session.title}'. ID: {session.session_id}")
+                
             self._current_session = session
             
             console.display_help(session.session_id)
             if not session.is_empty():
+                # Import przeniesiony niżej, aby uniknąć cyklicznych zależności
                 from commands.session_summary import display_history_summary
                 display_history_summary(session.get_history(), session.assistant_name)
         else:
             print("Rozpoczynanie nowej sesji.")
-            assistant = create_azor_assistant()
+            # Usunięto powtórzoną definicję assistant = create_azor_assistant()
             session = ChatSession(assistant=assistant)
             self._current_session = session
+            # DODANO: Wyświetlenie tytułu nowej sesji
+            console.print_info(f"Rozpoczęto nową sesję '{session.title}'. ID: {session.session_id}")
             console.display_help(session.session_id)
         
         return session
@@ -172,8 +182,42 @@ class SessionManager:
         session = self._current_session
         
         if session.is_empty():
-            console.print_info(f"\nSesja jest pusta/niekompletna. Pominięto finalny zapis.")
+            console.print_info(f"\nSesja '{session.title}' jest pusta/niekompletna. Pominięto finalny zapis.")
         else:
-            console.print_info(f"\nFinalny zapis historii sesji: {session.session_id}")
+            # DODANO: Wyświetlenie tytułu sesji
+            console.print_info(f"\nFinalny zapis historii sesji '{session.title}'. ID: {session.session_id}")
             session.save_to_file()
             console.display_final_instructions(session.session_id)
+
+    # NOWA METODA: Do wyświetlania listy wszystkich sesji w CLI
+    def list_all_sessions(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves a list of all saved sessions including their title and ID.
+        
+        Returns:
+            List[dict]: Lista słowników z danymi sesji.
+        """
+        return session_files.list_sessions()
+    
+    def rename_current_session(self, new_title: str) -> tuple[bool, str | None]:
+        """
+        Zmienia tytuł aktywnej sesji i zapisuje go na dysku.
+        
+        Args:
+            new_title: Nowy tytuł sesji.
+            
+        Returns:
+            tuple: (success: bool, error_message: str | None)
+        """
+        if not self._current_session:
+            return False, "Brak aktywnej sesji. Nie można zmienić tytułu."
+        
+        session = self._current_session
+        
+        # Zmiana tytułu przez metodę w ChatSession
+        success = session.rename(new_title)
+        
+        if success:
+            return True, None
+        else:
+            return False, f"Błąd podczas próby zapisu sesji '{session.session_id}' po zmianie tytułu"

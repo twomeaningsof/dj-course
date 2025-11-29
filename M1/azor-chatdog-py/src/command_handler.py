@@ -4,6 +4,7 @@ from commands.session_list import list_sessions_command
 from commands.session_display import display_full_session
 from commands.session_to_pdf import export_session_to_pdf
 from commands.session_remove import remove_session_command
+from commands.session_rename import rename_session_command
 
 VALID_SLASH_COMMANDS = ['/exit', '/quit', '/switch', '/help', '/session', '/pdf']
 
@@ -11,8 +12,10 @@ def handle_command(user_input: str) -> bool:
     """
     Handles slash commands. Returns True if the program should exit.
     """
-    parts = user_input.split()
+    # Zmieniono parsowanie, aby przechwycić resztę linii jako args
+    parts = user_input.split(maxsplit=1) 
     command = parts[0].lower()
+    args = parts[1].strip() if len(parts) > 1 else "" # Cała reszta linii
 
     manager = get_session_manager()
 
@@ -35,8 +38,10 @@ def handle_command(user_input: str) -> bool:
     
     # Switch command
     elif command == '/switch':
-        if len(parts) == 2:
-            new_id = parts[1]
+        if not args: # Używamy teraz args zamiast len(parts) == 2
+            console.print_error("Błąd: Użycie: /switch <SESSION-ID>")
+        else:
+            new_id = args # new_id to cała reszta linii
             current = manager.get_current_session()
             if new_id == current.session_id:
                 console.print_info("Jesteś już w tej sesji.")
@@ -59,15 +64,14 @@ def handle_command(user_input: str) -> bool:
                     if has_history:
                         from commands.session_summary import display_history_summary
                         display_history_summary(new_session.get_history(), new_session.assistant_name)
-        else:
-            console.print_error("Błąd: Użycie: /switch <SESSION-ID>")
             
     # Session subcommands
     elif command == '/session':
-        if len(parts) < 2:
-            console.print_error("Błąd: Komenda /session wymaga podkomendy (list, display, pop, clear, new).")
+        if not args: # Używamy args
+            console.print_error("Błąd: Komenda /session wymaga podkomendy (list, display, pop, clear, new, remove, rename).") 
         else:
-            handle_session_subcommand(parts[1].lower(), manager)
+            # PRZEKAZUJEMY CAŁE ARGUMENTY
+            handle_session_subcommand(args, manager)
 
     elif command == '/pdf':
         current = manager.get_current_session()
@@ -76,8 +80,14 @@ def handle_command(user_input: str) -> bool:
     return False
 
 
-def handle_session_subcommand(subcommand: str, manager):
+def handle_session_subcommand(subcommand_line: str, manager):
     """Handles /session subcommands."""
+    
+    # Parsowanie podkomendy i jej argumentów
+    sub_parts = subcommand_line.split(maxsplit=1)
+    subcommand = sub_parts[0].lower()
+    sub_args = sub_parts[1].strip() if len(sub_parts) > 1 else ""
+    
     current = manager.get_current_session()
     
     if subcommand == 'list':
@@ -115,5 +125,10 @@ def handle_session_subcommand(subcommand: str, manager):
     elif subcommand == 'remove':
         remove_session_command(manager)
         
+    # NOWA OBSŁUGA DLA /session rename
+    elif subcommand == 'rename':
+        # Argumenty są w sub_args
+        rename_session_command(manager, sub_args)
+            
     else:
         console.print_error(f"Błąd: Nieznana podkomenda dla /session: {subcommand}. Użyj /help.")
