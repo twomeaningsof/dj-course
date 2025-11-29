@@ -221,3 +221,11 @@ class SessionManager:
             return True, None
         else:
             return False, f"Błąd podczas próby zapisu sesji '{session.session_id}' po zmianie tytułu"
+        
+    def get_current_session_title(self) -> str:
+        if not self._current_session:
+            return "Brak aktywnej sesji. Nie można zwrócić tytułu."
+        
+        session = self._current_session
+        
+        return session.get_title()

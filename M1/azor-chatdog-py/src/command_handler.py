@@ -1,4 +1,4 @@
-from session import get_session_manager
+from session import get_session_manager 
 from cli import console
 from commands.session_list import list_sessions_command
 from commands.session_display import display_full_session
@@ -129,6 +129,9 @@ def handle_session_subcommand(subcommand_line: str, manager):
     elif subcommand == 'rename':
         # Argumenty są w sub_args
         rename_session_command(manager, sub_args)
-            
+        
+    elif subcommand == 'title':        
+        console.print_info(f"\nTytuł obecnej sesji to: {manager.get_current_session_title()}")
+        
     else:
         console.print_error(f"Błąd: Nieznana podkomenda dla /session: {subcommand}. Użyj /help.")

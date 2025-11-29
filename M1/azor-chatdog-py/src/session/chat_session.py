@@ -188,6 +188,10 @@ class ChatSession:
             self._history = self._llm_chat_session.get_history()
         return self._history
     
+    def get_title(self) -> str:
+        """Return the current session title."""
+        return self.title
+    
     def clear_history(self):
         """Clears all conversation history and reinitializes the LLM session."""
         self._history = []
