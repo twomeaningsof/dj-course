@@ -5,6 +5,7 @@ from files import session_files
 from files.wal import append_to_wal
 from llm.gemini_client import GeminiLLMClient
 from llm.llama_client import LlamaClient
+from assistant import create_azor_assistant, create_perfectionist_assistant, create_empathetic_assistant
 from assistant import Assistant
 from cli import console
 
@@ -65,22 +66,28 @@ class ChatSession:
         self._llm_chat_session = self._llm_client.create_chat_session(
             system_instruction=self.assistant.system_prompt,
             history=self._history,
-            thinking_budget=0
+            thinking_budget=0,
+            assistant_name=self.assistant_name
         )
     
     
     @classmethod
-    def load_from_file(cls, assistant: Assistant, session_id: str) -> tuple['ChatSession | None', str | None]:
+    def load_from_file(cls, session_id: str) -> tuple['ChatSession | None', str | None]:
         """
         Loads a session from disk.
         
         Args:
-            assistant: Assistant instance to use for this session
             session_id: ID of the session to load
             
         Returns:
             tuple: (ChatSession object or None, error_message or None)
         """
+     
+        _ASSISTANT_FACTORY = {
+            'AZOR': create_azor_assistant,
+            'PERFECTIONIST': create_perfectionist_assistant,
+            'EMPATHETIC': create_empathetic_assistant,
+        }
      
         try:
             result = session_files.load_session_history(session_id)
@@ -90,12 +97,14 @@ class ChatSession:
                 history, error = result
                 title = None
             else:
-                history, title, error = result
+                history, title, assistant_name, error = result
 
             if error:
                 return None, error
             
-            session = cls(assistant=assistant, session_id=session_id, history=history, title=title)
+            # Create new assistnat
+            create_assistant_func = _ASSISTANT_FACTORY.get(assistant_name, create_azor_assistant)
+            session = cls(assistant=create_assistant_func(), session_id=session_id, history=history, title=title)
             return session, None
             
         except ValueError as e:
@@ -109,14 +118,14 @@ class ChatSession:
         Returns:
             tuple: (success: bool, error_message: str | None)
         """
-        # Sync history from LLM session before saving
-        if self._llm_chat_session:
-            self._history = self._llm_chat_session.get_history()
         
+        current_history = self.get_history()    
+         
         return session_files.save_session_history(
             self.session_id, 
-            self._history, 
+            current_history, 
             self.assistant.system_prompt, 
+            self.assistant.name,
             self._llm_client.get_model_name(),
             title=self.title  # Added title argument
         )
@@ -153,8 +162,17 @@ class ChatSession:
         # 1. Wysłanie wiadomości i odebranie odpowiedzi
         response = self._llm_chat_session.send_message(text)
         
-        # 2. Sync history po wiadomości
-        self._history = self._llm_chat_session.get_history()
+        user_entry = {"role": "user", "parts": [{"text": text}]}
+        self._history.append(user_entry)
+        
+        
+        assistant_entry = {
+            "role": "model",
+            "parts": [{"text": response.text}],
+            "assistant_name": self.assistant.name 
+        }
+        
+        self._history.append(assistant_entry)        
         
         # 3. LOGIKA AUTOMATYCZNEGO TYTUŁOWANIA PRZEZ LLM
         # Jeśli tytuł jest domyślny ORAZ historia ma 2 elementy (pierwsza pełna wymiana)
@@ -182,11 +200,48 @@ class ChatSession:
         return response
     
     def get_history(self) -> List[Any]:
-        """Returns the current conversation history."""
-        # Always sync from LLM session to ensure consistency
-        if self._llm_chat_session:
-            self._history = self._llm_chat_session.get_history()
+        """Zwraca aktualną historię konwersacji, synchronizując się z sesją LLM."""
+        if not self._llm_chat_session:
+            return self._history
+            
+        # 1. Pobierz bazową, czystą historię z Gemini (nieetykietowaną w GeminiChatSessionWrapper)
+        gemini_history_clean = self._llm_chat_session.get_history()
+        
+        new_history = []
+        current_assistant_name = self.assistant_name # Aktualna nazwa asystenta dla nowych wpisów
+        
+        # Iteruj przez historię Gemini
+        for i, gemini_entry in enumerate(gemini_history_clean):
+            entry = gemini_entry.copy()
+            
+            # 2. Tylko wiadomości modelu są etykietowane
+            if entry['role'] == 'model':
+                
+                # PRÓBA 1: Sprawdź, czy etykieta istnieje już w wewnętrznej historii (stare, poprawne dane)
+                # Używamy etykiety z self._history, jeśli wpis istnieje na tym samym indeksie.
+                if i < len(self._history):
+                    original_entry = self._history[i]
+                    if 'assistant_name' in original_entry:
+                        # Stara wiadomość: użyj oryginalnej, zapisanej nazwy
+                        entry['assistant_name'] = original_entry['assistant_name']
+                    else:
+                        # Nowa wiadomość (lub po prostu brak etykiety): użyj nazwy bieżącego asystenta
+                        entry['assistant_name'] = current_assistant_name
+                else:
+                    # Nowa wiadomość (została dodana przez Gemini i jeszcze nie zapisana w self._history):
+                    # Użyj nazwy asystenta, który jest aktywny w tym momencie.
+                    # Uwaga: Ta sytuacja może się zdarzyć tylko, jeśli self._history jest niekompletna.
+                    # W standardowym przepływie powinna być już dodana przez send_message.
+                    # Dla bezpieczeństwa etykietujemy aktualnym asystentem.
+                    entry['assistant_name'] = current_assistant_name
+
+            new_history.append(entry)
+
+        # 3. Zastąp wewnętrzną historię nową, poprawnie etykietowaną wersją
+        self._history = new_history
+        
         return self._history
+
     
     def get_title(self) -> str:
         """Return the current session title."""
@@ -319,6 +374,10 @@ class ChatSession:
             # Możesz użyć konsoli do logowania błędu, jeśli jest importowana
             # console.print_error(f"Ostrzeżenie: Nie udało się wygenerować automatycznego tytułu: {e}")
             return None
+    
+    def set_assistant(self, new_assistant):
+        """Ustawia nowego asystenta dla tej sesji."""
+        self.assistant = new_assistant
     
     @property
     def assistant_name(self) -> str:

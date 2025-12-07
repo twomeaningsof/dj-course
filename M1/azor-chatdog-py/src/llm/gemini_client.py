@@ -18,7 +18,7 @@ class GeminiChatSessionWrapper:
     This ensures compatibility with LlamaClient's history format.
     """
     
-    def __init__(self, gemini_session):
+    def __init__(self, gemini_session, assistant_name: str):
         """
         Initialize wrapper with Gemini chat session.
         
@@ -26,6 +26,7 @@ class GeminiChatSessionWrapper:
             gemini_session: The actual Gemini chat session object
         """
         self.gemini_session = gemini_session
+        self.assistant_name = assistant_name
     
     def send_message(self, text: str) -> Any:
         """
@@ -63,6 +64,7 @@ class GeminiChatSessionWrapper:
                     "role": content.role,
                     "parts": [{"text": text_part}]
                 }
+                    
                 universal_history.append(universal_content)
         
         return universal_history
@@ -144,7 +146,8 @@ class GeminiLLMClient:
     def create_chat_session(self, 
                           system_instruction: str, 
                           history: Optional[List[Dict]] = None,
-                          thinking_budget: int = 0) -> GeminiChatSessionWrapper:
+                          thinking_budget: int = 0,
+                          assistant_name: str = "AZOR") -> GeminiChatSessionWrapper:
         """
         Creates a new chat session with the specified configuration.
         
@@ -183,7 +186,7 @@ class GeminiLLMClient:
             )
         )
         
-        return GeminiChatSessionWrapper(gemini_session)
+        return GeminiChatSessionWrapper(gemini_session, assistant_name)
     
     def count_history_tokens(self, history: List[Dict]) -> int:
         """

@@ -15,6 +15,7 @@ def save_session_history(
     session_id: str, 
     history: List[Any], 
     system_prompt: str, 
+    asisstant_name: str,
     model_name: str, 
     title: Optional[str] = None
 ) -> Tuple[bool, Optional[str]]:
@@ -38,6 +39,7 @@ def save_session_history(
             "session_id": session_id,
             "title": title,
             "model": model_name,
+            "current_assistant": asisstant_name,
             "system_prompt": system_prompt,
             "history": history
         }
@@ -49,7 +51,7 @@ def save_session_history(
     except Exception as e:
         return False, str(e)
 
-def load_session_history(session_id: str) -> Tuple[Optional[List[Any]], Optional[str], Optional[str]]:
+def load_session_history(session_id: str) -> Tuple[Optional[List[Any]], Optional[str], Optional[str], Optional[str]]:
     """
     Ładuje historię sesji i metadane, włącznie z tytułem, z pliku JSON.
     
@@ -60,20 +62,21 @@ def load_session_history(session_id: str) -> Tuple[Optional[List[Any]], Optional
         file_path = _get_session_path(session_id)
         
         if not os.path.exists(file_path):
-            return None, None, f"Session file not found: {session_id}"
+            return None, None, None, f"Session file not found: {session_id}"
             
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
             
         history = data.get("history", [])
-        title = data.get("title")  # Odczyt tytułu (obsługuje stare pliki bez tytułu)
+        title = data.get("title", "untitled")  # Odczyt tytułu (obsługuje stare pliki bez tytułu)
+        asisstant_name = data.get("asisstant_name", "AZOR")  
         
-        return history, title, None
+        return history, title, asisstant_name, None
         
     except json.JSONDecodeError:
-        return None, None, f"Corrupted session file: {session_id}"
+        return None, None, None, f"Corrupted session file: {session_id}"
     except Exception as e:
-        return None, None, str(e)
+        return None, None, None, str(e)
 
 def list_sessions() -> List[dict]:
     """

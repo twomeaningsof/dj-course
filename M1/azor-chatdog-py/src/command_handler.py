@@ -5,6 +5,7 @@ from commands.session_display import display_full_session
 from commands.session_to_pdf import export_session_to_pdf
 from commands.session_remove import remove_session_command
 from commands.session_rename import rename_session_command
+from commands.session_assistant_switch import session_assistant_switch
 
 VALID_SLASH_COMMANDS = ['/exit', '/quit', '/switch', '/help', '/session', '/pdf']
 
@@ -132,6 +133,9 @@ def handle_session_subcommand(subcommand_line: str, manager):
         
     elif subcommand == 'title':        
         console.print_info(f"\nTytuł obecnej sesji to: {manager.get_current_session_title()}")
+        
+    elif subcommand == 'switch_assistant':
+        session_assistant_switch(manager, sub_args)
         
     else:
         console.print_error(f"Błąd: Nieznana podkomenda dla /session: {subcommand}. Użyj /help.")

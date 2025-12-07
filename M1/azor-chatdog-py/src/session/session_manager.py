@@ -1,6 +1,6 @@
 from cli import console
 from .chat_session import ChatSession
-from assistant import create_azor_assistant
+from assistant import create_azor_assistant, create_perfectionist_assistant, create_empathetic_assistant
 from files import session_files
 from typing import List, Dict, Any 
 
@@ -11,9 +11,19 @@ class SessionManager:
     Provides high-level operations for session management.
     """
     
+    _ASSISTANT_FACTORY = {
+        'AZOR': create_azor_assistant,
+        'PERFECTIONIST': create_perfectionist_assistant,
+        'EMPATHETIC': create_empathetic_assistant,
+    }
+    
     def __init__(self):
         """Initializes with no active session."""
         self._current_session: ChatSession | None = None
+    
+    def _get_assistant_creator(self, assistant_type: str):
+        """Zwraca funkcję tworzącą asystenta na podstawie typu (domyślnie azor)."""
+        return self._ASSISTANT_FACTORY.get(assistant_type, create_azor_assistant)
     
     def get_current_session(self) -> ChatSession:
         """
@@ -30,7 +40,7 @@ class SessionManager:
         """Returns True if there's an active session."""
         return self._current_session is not None
     
-    def create_new_session(self, save_current: bool = True) -> tuple[ChatSession, bool, str | None, str | None]:
+    def create_new_session(self, save_current: bool = True, assistant_type: str = 'azor') -> tuple[ChatSession, bool, str | None, str | None]:
         """
         Creates a new session, optionally saving the current one.
         
@@ -57,10 +67,18 @@ class SessionManager:
                 save_error = error
         
         # Create new session
-        assistant = create_azor_assistant()
+        create_assistant_func = self._get_assistant_creator(assistant_type)
+            
+        try:
+            assistant = create_assistant_func()
+        except Exception as e:
+            print(f"Błąd podczas tworzenia asystenta typu '{assistant_type}': {e}")
+            # Dla uproszczenia, w razie błędu wracamy do domyślnego 'azor'
+            assistant = create_azor_assistant()
+    
         new_session = ChatSession(assistant=assistant)
         self._current_session = new_session
-        
+    
         return new_session, save_attempted, previous_session_id, save_error
     
     def switch_to_session(self, session_id: str) -> tuple[ChatSession | None, bool, str | None, bool, str | None, bool]:
@@ -91,7 +109,7 @@ class SessionManager:
         
         # Load new session
         assistant = create_azor_assistant()
-        new_session, error = ChatSession.load_from_file(assistant=assistant, session_id=session_id)
+        new_session, error = ChatSession.load_from_file(session_id=session_id)
         
         if error:
             # Failed to load - don't change current session
@@ -229,3 +247,41 @@ class SessionManager:
         session = self._current_session
         
         return session.get_title()
+    
+    def switch_assistant(self, new_assistant_type: str) -> tuple[bool, str | None, str | None]:
+        """
+        Przełącza asystenta w ramach aktywnej sesji, zachowując historię.
+        
+        Args:
+            new_assistant_type: Typ nowego asystenta (np. 'PERFECTIONIST').
+            
+        Returns:
+            tuple: (success: bool, old_assistant_type: str | None, error_message: str | None)
+        """
+        if not self._current_session:
+            return False, None, "Brak aktywnej sesji. Nie można zmienić asystenta."
+
+        old_assistant_name = self._current_session.assistant.name
+        
+        # 1. Pobranie funkcji tworzącej asystenta
+        create_assistant_func = self._get_assistant_creator(new_assistant_type.upper())
+        
+        try:
+            # 2. Utworzenie nowego asystenta
+            new_assistant = create_assistant_func()
+            
+            # 3. Przypisanie nowego asystenta do aktywnej sesji
+            self._current_session.set_assistant(new_assistant)
+            
+            # 4. Ponowne inicjowanie sesji LLM z nowym asystentem
+            # Kluczowe: należy utworzyć nową sesję czatu LLM (np. Gemini ChatSession), 
+            # używając historii starej sesji oraz nowej instrukcji systemowej asystenta.
+            self._current_session._initialize_llm_session()
+            
+            self._current_session.save_to_file()
+            
+            return True, old_assistant_name, None
+        
+        except Exception as e:
+            error_msg = f"Błąd podczas przełączania asystenta na '{new_assistant_type}': {e}"
+            return False, old_assistant_name, error_msg
