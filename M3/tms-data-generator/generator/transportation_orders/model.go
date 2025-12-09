@@ -21,6 +21,8 @@ type TransportationOrder struct {
 	ID               int
 	OrderNumber      string
 	CustomerID       int
+	VehicleID        int // New field
+	DriverID         int // New field
 	Status           OrderStatus
 	Amount           float64
 	OrderDate        time.Time

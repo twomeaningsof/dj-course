@@ -122,6 +122,33 @@
             opacity: 1;
         }
 
+        .filter-controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .filter-button {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            padding: 8px 15px;
+            border-radius: 10px;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.2s;
+        }
+
+        .filter-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .filter-button.active {
+            background: rgba(255, 255, 255, 0.4);
+            font-weight: bold;
+        }
+
         .scrollbar::-webkit-scrollbar {
             width: 8px;
         }
@@ -146,6 +173,15 @@
         <div class="stats-column">
             <h1>📊 Time Statistics</h1>
             <h2>Time spent per domain</h2>
+            <div class="filter-controls" id="timeFilterControls">
+                <button class="filter-button active" data-filter="day">Day</button>
+                <button class="filter-button" data-filter="week">Week</button>
+                <button class="filter-button" data-filter="month">Month</button>
+            </div>
+            <div class="chart-type-controls" id="timeChartTypeControls">
+                <button class="filter-button active" data-chart-type="pie">Pie Chart</button>
+                <button class="filter-button" data-chart-type="bar">Bar Chart</button>
+            </div>
             <div class="chart-container">
                 <canvas id="timeChart"></canvas>
             </div>
@@ -158,6 +194,11 @@
         <div class="stats-column">
             <h1>🫣 "Gotcha" Counter</h1>
             <h2>How many times you tried to access blocked sites</h2>
+            <div class="filter-controls" id="gotchaFilterControls">
+                <button class="filter-button active" data-filter="day">Day</button>
+                <button class="filter-button" data-filter="week">Week</button>
+                <button class="filter-button" data-filter="month">Month</button>
+            </div>
             <div class="chart-container">
                 <canvas id="gotchaChart"></canvas>
             </div>

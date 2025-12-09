@@ -8,14 +8,19 @@ function displayStats() {
     const timeStatsList = document.getElementById('statsList');
     const timeChartCanvas = document.getElementById('timeChart').getContext('2d');
     const clearTimeStatsBtn = document.getElementById('clearTimeStats');
+    const timeFilterControls = document.getElementById('timeFilterControls');
     let timeChart = null;
 
     const gotchaStatsList = document.getElementById('gotchaList');
     const gotchaChartCanvas = document.getElementById('gotchaChart').getContext('2d');
     const clearGotchaStatsBtn = document.getElementById('clearGotchaStats');
+    const gotchaFilterControls = document.getElementById('gotchaFilterControls');
     let gotchaChart = null;
 
     let intervalId = null;
+    let currentTimeFilter = 'day'; // Default filter
+    let currentGotchaFilter = 'day'; // Default filter
+    let currentTimeChartType = 'pie'; // Default chart type for time stats
 
     function formatTime(seconds) {
         const hours = Math.floor(seconds / 3600);
@@ -24,13 +29,14 @@ function displayStats() {
         return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
 
-    function updateStats() {
+    function updateStats(filterType = currentTimeFilter) {
         chrome.storage.local.get(['timeData', 'gotchaStats'], (result) => {
             // Time Stats
             timeStatsList.innerHTML = '';
-            const timeData = result.timeData || {};
-            const sortedTimeSites = Object.entries(timeData).sort((a, b) => b[1] - a[1]);
-    
+            let timeData = result.timeData || {};
+            let filteredTimeData = filterData(timeData, filterType);
+            const sortedTimeSites = Object.entries(filteredTimeData).sort((a, b) => b[1] - a[1]);
+
             if (sortedTimeSites.length === 0) {
                 timeStatsList.innerHTML = '<div class="stat-item">No time tracking data yet.</div>';
                 document.getElementById('timeChart').style.display = 'none';
@@ -40,13 +46,14 @@ function displayStats() {
                     const statItem = createStatItem(site, formatTime(time), timeChart, timeStatsList);
                     timeStatsList.appendChild(statItem);
                 });
-                renderPieChart(sortedTimeSites);
+                renderTimeChart(sortedTimeSites, currentTimeChartType);
             }
 
             // Gotcha Stats
             gotchaStatsList.innerHTML = '';
-            const gotchaData = result.gotchaStats || {};
-            const sortedGotchaSites = Object.entries(gotchaData).sort((a, b) => b[1] - a[1]);
+            let gotchaData = result.gotchaStats || {};
+            let filteredGotchaData = filterData(gotchaData, currentGotchaFilter);
+            const sortedGotchaSites = Object.entries(filteredGotchaData).sort((a, b) => b[1] - a[1]);
 
             if (sortedGotchaSites.length === 0) {
                 gotchaStatsList.innerHTML = '<div class="stat-item">No "gotcha" data yet.</div>';
@@ -57,9 +64,53 @@ function displayStats() {
                     const statItem = createStatItem(site, `${count} times`, gotchaChart, gotchaStatsList);
                     gotchaStatsList.appendChild(statItem);
                 });
-                renderGotchaChart(sortedGotchaSites);
+                renderGotchaChart(sortedGotchaSites, 'bar'); // Always bar chart for gotcha stats for now
             }
         });
+    }
+
+    function filterData(data, filterType) {
+        const now = Date.now();
+        const oneDay = 24 * 60 * 60 * 1000;
+        const oneWeek = 7 * oneDay;
+        const oneMonth = 30 * oneDay; // Approximation for a month
+
+        let filtered = {};
+
+        for (const site in data) {
+            if (Array.isArray(data[site])) {
+                filtered[site] = data[site].filter(entry => {
+                    const entryTime = entry.timestamp || 0;
+                    if (filterType === 'day') {
+                        return (now - entryTime) < oneDay;
+                    } else if (filterType === 'week') {
+                        return (now - entryTime) < oneWeek;
+                    } else if (filterType === 'month') {
+                        return (now - entryTime) < oneMonth;
+                    }
+                    return true; // No filter, return all
+                }).reduce((sum, entry) => sum + entry.time, 0);
+            } else if (typeof data[site] === 'object' && data[site] !== null && 'timestamp' in data[site]) {
+                // Handle objects with timestamp and value (e.g., gotchaStats might store an object {count: N, timestamp: T})
+                const entryTime = data[site].timestamp || 0;
+                let isValid = false;
+                if (filterType === 'day') {
+                    isValid = (now - entryTime) < oneDay;
+                } else if (filterType === 'week') {
+                    isValid = (now - entryTime) < oneWeek;
+                } else if (filterType === 'month') {
+                    isValid = (now - entryTime) < oneMonth;
+                }
+
+                if (isValid) {
+                    filtered[site] = data[site].count; // Assuming 'count' for gotchaStats
+                }
+            } else {
+                // If data format is just site: value (no timestamp), include all (no filtering applied)
+                filtered[site] = data[site];
+            }
+        }
+        return filtered;
     }
 
     function removeStatEntry(statType, siteToRemove) {
@@ -143,23 +194,20 @@ function displayStats() {
         return statItem;
     }
 
-    function renderPieChart(data) {
+    function renderTimeChart(data, chartType) {
         const labels = data.map(item => item[0]);
         const values = data.map(item => item[1]);
 
         if (timeChart) {
-            timeChart.data.labels = labels;
-            timeChart.data.datasets[0].data = values;
-            timeChart.update();
-            return;
+            timeChart.destroy();
+            timeChart = null;
         }
 
-        timeChart = new Chart(timeChartCanvas, {
-            type: 'pie',
+        const chartConfig = {
             data: {
                 labels: labels,
                 datasets: [{
-                    label: 'Time Spent (seconds)',
+                    label: chartType === 'pie' ? 'Time Spent (seconds)' : 'Time Spent',
                     data: values,
                     backgroundColor: [
                         'rgba(255, 99, 132, 0.7)',
@@ -192,7 +240,7 @@ function displayStats() {
                         onClick: (e, legendItem, legend) => {
                             const index = legendItem.index;
                             const ci = legend.chart;
-                            
+
                             ci.toggleDataVisibility(index);
                             ci.update();
 
@@ -210,8 +258,12 @@ function displayStats() {
                                 if (label) {
                                     label += ': ';
                                 }
-                                if (context.parsed !== null) {
-                                    label += formatTime(context.parsed);
+                                let value = context.parsed;
+                                if (context.chart.config.type === 'bar') {
+                                    value = context.parsed.y;
+                                }
+                                if (value !== null) {
+                                    label += formatTime(value);
                                 }
                                 return label;
                             }
@@ -219,22 +271,41 @@ function displayStats() {
                     }
                 }
             }
+        };
+
+        if (chartType === 'bar') {
+            chartConfig.options.scales = {
+                x: {
+                    ticks: {
+                        color: 'white'
+                    }
+                },
+                y: {
+                    ticks: {
+                        color: 'white'
+                    }
+                }
+            };
+            chartConfig.options.plugins.legend.display = false;
+        }
+
+        timeChart = new Chart(timeChartCanvas, {
+            type: chartType,
+            ...chartConfig
         });
     }
 
-    function renderGotchaChart(data) {
+    function renderGotchaChart(data, chartType) {
         const labels = data.map(item => item[0]);
-        const values = data.map(item => item[1]);
+        const values = data.map(item => item[1].count); // Access count property
 
         if (gotchaChart) {
-            gotchaChart.data.labels = labels;
-            gotchaChart.data.datasets[0].data = values;
-            gotchaChart.update();
-            return;
+            gotchaChart.destroy();
+            gotchaChart = null;
         }
 
         gotchaChart = new Chart(gotchaChartCanvas, {
-            type: 'bar',
+            type: chartType,
             data: {
                 labels: labels,
                 datasets: [{
@@ -294,11 +365,42 @@ function displayStats() {
         }
     });
 
+    // Add event listeners for time filter buttons
+    timeFilterControls.querySelectorAll('.filter-button').forEach(button => {
+        button.addEventListener('click', () => {
+            timeFilterControls.querySelector('.filter-button.active').classList.remove('active');
+            button.classList.add('active');
+            currentTimeFilter = button.dataset.filter;
+            updateStats();
+        });
+    });
+
+    // Add event listeners for time chart type buttons
+    const timeChartTypeControls = document.getElementById('timeChartTypeControls');
+    timeChartTypeControls.querySelectorAll('.filter-button').forEach(button => {
+        button.addEventListener('click', () => {
+            timeChartTypeControls.querySelector('.filter-button.active').classList.remove('active');
+            button.classList.add('active');
+            currentTimeChartType = button.dataset.chartType;
+            updateStats();
+        });
+    });
+
+    // Add event listeners for gotcha filter buttons
+    gotchaFilterControls.querySelectorAll('.filter-button').forEach(button => {
+        button.addEventListener('click', () => {
+            gotchaFilterControls.querySelector('.filter-button.active').classList.remove('active');
+            button.classList.add('active');
+            currentGotchaFilter = button.dataset.filter;
+            updateStats();
+        });
+    });
+
     // Initial update
-    updateStats();
+    updateStats(currentTimeFilter);
 
     // Set up auto-refresh
-    intervalId = setInterval(updateStats, 5000);
+    intervalId = setInterval(() => updateStats(currentTimeFilter), 5000);
 
     // Clean up the interval when the page is hidden
     document.addEventListener('visibilitychange', () => {

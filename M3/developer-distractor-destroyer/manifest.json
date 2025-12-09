@@ -8,11 +8,10 @@
     "activeTab",
     "tabs",
     "idle",
-    "webNavigation"
+    "webNavigation",
+    "alarms"
   ],
-  "host_permissions": [
-    "<all_urls>"
-  ],
+  "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },
@@ -27,7 +26,13 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["blocked.html", "blocked.js", "chart.min.js", "stats.html", "stats.js"],
+      "resources": [
+        "blocked.html",
+        "blocked.js",
+        "chart.min.js",
+        "stats.html",
+        "stats.js"
+      ],
       "matches": ["<all_urls>"]
     }
   ]

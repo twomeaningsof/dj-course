@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"tms-data-generator/generator/customers"
+	"tms-data-generator/generator/drivers"
+	"tms-data-generator/generator/vehicles"
 
 	"github.com/brianvoe/gofakeit/v6"
 )
 
 // GenerateTransportationOrders generates transportation orders with realistic data.
-func GenerateTransportationOrders(count int, customers []customers.Customer) []TransportationOrder {
+func GenerateTransportationOrders(count int, customers []customers.Customer, drivers []drivers.Driver, vehicles []vehicles.Vehicle) []TransportationOrder {
 	orders := make([]TransportationOrder, count)
 	shippingMethods := []string{"Standard Delivery", "Express Delivery", "Next Day Delivery", "Same Day Delivery", "Economy Shipping"}
 
@@ -49,13 +51,17 @@ func GenerateTransportationOrders(count int, customers []customers.Customer) []T
 		// Generate shipping address
 		address := gofakeit.Address()
 
-		// Randomly select a customer
+		// Randomly select a customer, driver, and vehicle
 		customerIndex := rand.Intn(len(customers))
+		driverIndex := rand.Intn(len(drivers))
+		vehicleIndex := rand.Intn(len(vehicles))
 
 		orders[i] = TransportationOrder{
 			ID:               i + 1,
 			OrderNumber:      fmt.Sprintf("#%05d", i+1),
 			CustomerID:       customers[customerIndex].ID,
+			DriverID:         drivers[driverIndex].ID,
+			VehicleID:        vehicles[vehicleIndex].ID,
 			Status:           status,
 			Amount:           0, // Will be calculated from order items
 			OrderDate:        orderDate,
@@ -98,13 +104,15 @@ func GenerateInsertStatements(orders []TransportationOrder) string {
 	var sb strings.Builder
 	sb.Grow(len(orders) * 200) // Pre-allocate approximate size
 
-	sb.WriteString("INSERT INTO transportation_orders (id, order_number, customer_id, status, amount, order_date, expected_delivery, shipping_address, shipping_city, shipping_state, shipping_zip_code, shipping_method, tracking_number) VALUES\n")
+	sb.WriteString("INSERT INTO transportation_orders (id, order_number, customer_id, vehicle_id, driver_id, status, amount, order_date, expected_delivery, shipping_address, shipping_city, shipping_state, shipping_zip_code, shipping_method, tracking_number) VALUES\n")
 
 	for i, order := range orders {
-		sb.WriteString(fmt.Sprintf("    (%d, '%s', %d, '%s', %.2f, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')",
+		sb.WriteString(fmt.Sprintf("    (%d, '%s', %d, %d, %d, '%s', %.2f, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')",
 			order.ID,
 			order.OrderNumber,
 			order.CustomerID,
+			order.VehicleID,
+			order.DriverID,
 			order.Status,
 			order.Amount,
 			order.OrderDate.Format("2006-01-02 15:04:05"),

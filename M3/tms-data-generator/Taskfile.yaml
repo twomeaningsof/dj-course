@@ -19,7 +19,7 @@ tasks:
   run:
     desc: Run the compiled application binary
     cmds:
-      - ./{{.BINARY}}
+      - bash ./debug_run.sh
     deps:
       - build
 

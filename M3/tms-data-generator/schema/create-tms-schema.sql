@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS transportation_orders;
 DROP TABLE IF EXISTS customers;
 DROP TABLE IF EXISTS drivers;
 DROP TABLE IF EXISTS vehicles;
+DROP TABLE IF EXISTS time_locks;
 
 CREATE TABLE vehicles (
     id INT PRIMARY KEY,
@@ -37,6 +38,8 @@ CREATE TABLE transportation_orders (
     id INT PRIMARY KEY,
     order_number VARCHAR(20) UNIQUE NOT NULL,
     customer_id INT NOT NULL,
+    vehicle_id INT,
+    driver_id INT,
     status VARCHAR(20) NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
     order_date TIMESTAMP NOT NULL,
@@ -47,7 +50,9 @@ CREATE TABLE transportation_orders (
     shipping_zip_code VARCHAR(20),
     shipping_method VARCHAR(50),
     tracking_number VARCHAR(50),
-    FOREIGN KEY (customer_id) REFERENCES customers(id)
+    FOREIGN KEY (customer_id) REFERENCES customers(id),
+    FOREIGN KEY (vehicle_id) REFERENCES vehicles(id),
+    FOREIGN KEY (driver_id) REFERENCES drivers(id)
 );
 
 CREATE TABLE order_timeline_events (
@@ -59,6 +64,22 @@ CREATE TABLE order_timeline_events (
     description TEXT,
     executed_by VARCHAR(100),
     FOREIGN KEY (order_id) REFERENCES transportation_orders(id)
+);
+
+CREATE TABLE time_locks (
+    id INT PRIMARY KEY,
+    driver_id INT NULL,
+    vehicle_id INT NULL,
+    start_time TIMESTAMP NOT NULL,
+    end_time TIMESTAMP NOT NULL,
+    lock_type VARCHAR(50) NOT NULL,
+    transportation_order_id INT NULL,
+    FOREIGN KEY (driver_id) REFERENCES drivers(id),
+    FOREIGN KEY (vehicle_id) REFERENCES vehicles(id),
+    FOREIGN KEY (transportation_order_id) REFERENCES transportation_orders(id),
+    CHECK ((lock_type = 'URLOP/L4' AND vehicle_id IS NULL AND order_id IS NULL) OR
+           (lock_type = 'SERWIS' AND driver_id IS NULL AND order_id IS NULL) OR
+           (lock_type = 'TRASA' AND driver_id IS NOT NULL AND vehicle_id IS NOT NULL AND order_id IS NOT NULL))
 );
 
 CREATE TABLE order_items (

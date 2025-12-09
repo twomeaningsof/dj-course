@@ -73,7 +73,10 @@ function updateTime(domain) {
         const timeData = result.timeData || {};
         const currentSessionTime = result.currentSessionTime || 0;
 
-        timeData[domain] = (timeData[domain] || 0) + 1;
+        if (!timeData[domain]) {
+            timeData[domain] = [];
+        }
+        timeData[domain].push({ timestamp: Date.now(), time: 1 });
 
         chrome.storage.local.set({
             timeData: timeData,
@@ -148,7 +151,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
             
             chrome.storage.local.get('gotchaStats', (result) => {
                 const stats = result.gotchaStats || {};
-                stats[domain] = (stats[domain] || 0) + 1;
+                // Increment count, and update timestamp
+                stats[domain] = { 
+                    count: (stats[domain] ? stats[domain].count : 0) + 1, 
+                    timestamp: Date.now() 
+                };
                 chrome.storage.local.set({ gotchaStats: stats });
             });
         }
@@ -189,7 +196,11 @@ function monitorIfBlocked() {
                     chrome.tabs.update(tab.id, { url: blockedPageUrl });
                     chrome.storage.local.get('gotchaStats', (result) => {
                         const stats = result.gotchaStats || {};
-                        stats[domain] = (stats[domain] || 0) + 1;
+                        // Increment count, and update timestamp
+                        stats[domain] = { 
+                            count: (stats[domain] ? stats[domain].count : 0) + 1, 
+                            timestamp: Date.now() 
+                        };
                         chrome.storage.local.set({ gotchaStats: stats });
                     });
                 }

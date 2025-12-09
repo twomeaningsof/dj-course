@@ -12,6 +12,7 @@ import (
 	"tms-data-generator/generator/config"
 	"tms-data-generator/generator/customers"
 	"tms-data-generator/generator/drivers"
+	"tms-data-generator/generator/time_locks"
 	"tms-data-generator/generator/transportation_orders"
 	"tms-data-generator/generator/vehicles"
 )
@@ -51,6 +52,10 @@ func Generate(outputFile string) error {
 	var customersStatements string
 	wg := sync.WaitGroup{}
 
+	var vehiclesList []vehicles.Vehicle
+	var driversList []drivers.Driver
+	var customersList []customers.Customer
+
 	start := time.Now() // Start timing
 
 	// Phase 1: Generate independent entities in parallel
@@ -59,56 +64,65 @@ func Generate(outputFile string) error {
 		defer wg.Done()
 		startVehicles := time.Now()
 		fmt.Println("Generating vehicles...", time.Now())
-		vehiclesStatements = vehicles.GenerateInsertStatements(vehicles.GenerateVehicles(config.VEHICLES))
+		vehiclesList = vehicles.GenerateVehicles(config.VEHICLES) // Store the generated vehicles
+		vehiclesStatements = vehicles.GenerateInsertStatements(vehiclesList)
 		fmt.Println("done generating vehicles", time.Now(), time.Since(startVehicles))
 	}()
 	go func() {
 		defer wg.Done()
 		startDrivers := time.Now()
 		fmt.Println("Generating drivers...", time.Now())
-		driversStatements = drivers.GenerateInsertStatements(drivers.GenerateDrivers(config.DRIVERS))
+		driversList = drivers.GenerateDrivers(config.DRIVERS) // Store the generated drivers
+		driversStatements = drivers.GenerateInsertStatements(driversList)
 		fmt.Println("done generating drivers", time.Now(), time.Since(startDrivers))
 	}()
 	go func() {
 		defer wg.Done()
 		startCustomers := time.Now()
 		fmt.Println("Generating customers...", time.Now())
-		customersStatements = customers.GenerateInsertStatements(customers.GenerateCustomers(config.CUSTOMERS))
+		customersList = customers.GenerateCustomers(config.CUSTOMERS)
+		customersStatements = customers.GenerateInsertStatements(customersList)
 		fmt.Println("done generating customers", time.Now(), time.Since(startCustomers))
 	}()
 
 	fmt.Println("Waiting for independent entities...", time.Now())
 	wg.Wait()
 
-	// Phase 2: Generate orders (depends on customers)
+	// Phase 2: Generate orders (depends on customers, drivers, and vehicles)
 	startOrders := time.Now()
 	fmt.Println("Generating transportation orders...", time.Now())
-	customersList := customers.GenerateCustomers(config.CUSTOMERS)
-	ordersList := transportation_orders.GenerateTransportationOrders(config.TRANSPORTATION_ORDERS, customersList)
+	ordersList := transportation_orders.GenerateTransportationOrders(config.TRANSPORTATION_ORDERS, customersList, driversList, vehiclesList)
 	fmt.Println("done generating transportation orders", time.Now(), time.Since(startOrders))
 
-	// Phase 3: Generate order items
+	// Phase 3: Generate time locks
+	startTimeLocks := time.Now()
+	fmt.Println("Generating time locks...", time.Now())
+	timeLocksList := time_locks.GenerateTimeLocks(config.TIME_LOCKS, driversList, vehiclesList, ordersList)
+	fmt.Println("done generating time locks", time.Now(), time.Since(startTimeLocks))
+
+	// Phase 4: Generate order items
 	startItems := time.Now()
 	fmt.Println("Generating order items...", time.Now())
 	orderItems := transportation_orders.GenerateOrderItems(ordersList)
 	fmt.Println("done generating order items", time.Now(), time.Since(startItems))
 
-	// Phase 4: Update order amounts based on items
+	// Phase 5: Update order amounts based on items
 	startUpdate := time.Now()
 	fmt.Println("Updating order amounts...", time.Now())
 	transportation_orders.UpdateOrderAmounts(ordersList, orderItems)
 	fmt.Println("done updating order amounts", time.Now(), time.Since(startUpdate))
 
-	// Phase 5: Generate timeline events
+	// Phase 6: Generate timeline events
 	startTimeline := time.Now()
 	fmt.Println("Generating order timeline events...", time.Now())
 	timelineEvents := transportation_orders.GenerateOrderTimelineEvents(ordersList)
 	fmt.Println("done generating timeline events", time.Now(), time.Since(startTimeline))
 
-	// Phase 6: Generate SQL statements
+	// Phase 7: Generate SQL statements
 	startSQL := time.Now()
 	fmt.Println("Generating SQL statements...", time.Now())
 	ordersStatements := transportation_orders.GenerateInsertStatements(ordersList)
+	timeLocksStatements := time_locks.GenerateInsertStatements(timeLocksList)
 	timelineStatements := transportation_orders.GenerateTimelineEventsInsertStatements(timelineEvents)
 	itemsStatements := transportation_orders.GenerateOrderItemsInsertStatements(orderItems)
 	fmt.Println("done generating SQL statements", time.Now(), time.Since(startSQL))
@@ -125,6 +139,7 @@ func Generate(outputFile string) error {
 	sb.WriteString(driversStatements)
 	sb.WriteString(customersStatements)
 	sb.WriteString(ordersStatements)
+	sb.WriteString(timeLocksStatements)
 	sb.WriteString(timelineStatements)
 	sb.WriteString(itemsStatements)
 
