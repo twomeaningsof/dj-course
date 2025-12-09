@@ -77,9 +77,9 @@ CREATE TABLE time_locks (
     FOREIGN KEY (driver_id) REFERENCES drivers(id),
     FOREIGN KEY (vehicle_id) REFERENCES vehicles(id),
     FOREIGN KEY (transportation_order_id) REFERENCES transportation_orders(id),
-    CHECK ((lock_type = 'URLOP/L4' AND vehicle_id IS NULL AND order_id IS NULL) OR
-           (lock_type = 'SERWIS' AND driver_id IS NULL AND order_id IS NULL) OR
-           (lock_type = 'TRASA' AND driver_id IS NOT NULL AND vehicle_id IS NOT NULL AND order_id IS NOT NULL))
+    CHECK ((lock_type = 'URLOP/L4' AND vehicle_id IS NULL AND transportation_order_id IS NULL) OR
+           (lock_type = 'SERWIS' AND driver_id IS NULL AND transportation_order_id IS NULL) OR
+           (lock_type = 'TRASA' AND driver_id IS NOT NULL AND vehicle_id IS NOT NULL AND transportation_order_id IS NOT NULL))
 );
 
 CREATE TABLE order_items (
