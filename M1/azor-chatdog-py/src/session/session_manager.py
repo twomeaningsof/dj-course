@@ -2,7 +2,7 @@ from cli import console
 from .chat_session import ChatSession
 from assistant import create_azor_assistant, create_perfectionist_assistant, create_empathetic_assistant
 from files import session_files
-from typing import List, Dict, Any 
+from typing import List, Dict, Any, Optional 
 
 
 class SessionManager:
@@ -17,12 +17,15 @@ class SessionManager:
         'EMPATHETIC': create_empathetic_assistant,
     }
     
-    def __init__(self):
+    def __init__(self, mcp_handler: Optional[Any] = None):
         """Initializes with no active session."""
         self._current_session: ChatSession | None = None
+        self._mcp_handler = mcp_handler
     
     def _get_assistant_creator(self, assistant_type: str):
-        """Zwraca funkcję tworzącą asystenta na podstawie typu (domyślnie azor)."""
+        """
+        Zwraca funkcję tworzącą asystenta na podstawie typu (domyślnie azor).
+        """
         return self._ASSISTANT_FACTORY.get(assistant_type, create_azor_assistant)
     
     def get_current_session(self) -> ChatSession:
@@ -76,7 +79,7 @@ class SessionManager:
             # Dla uproszczenia, w razie błędu wracamy do domyślnego 'azor'
             assistant = create_azor_assistant()
     
-        new_session = ChatSession(assistant=assistant)
+        new_session = ChatSession(assistant=assistant, mcp_handler=self._mcp_handler)
         self._current_session = new_session
     
         return new_session, save_attempted, previous_session_id, save_error
@@ -109,7 +112,7 @@ class SessionManager:
         
         # Load new session
         assistant = create_azor_assistant()
-        new_session, error = ChatSession.load_from_file(session_id=session_id)
+        new_session, error = ChatSession.load_from_file(session_id=session_id, mcp_handler=self._mcp_handler)
         
         if error:
             # Failed to load - don't change current session
@@ -139,7 +142,7 @@ class SessionManager:
 
         # Create a new session regardless of whether the file was successfully removed
         assistant = create_azor_assistant()
-        new_session = ChatSession(assistant=assistant)
+        new_session = ChatSession(assistant=assistant, mcp_handler=self._mcp_handler)
         self._current_session = new_session
 
         return new_session, removed_session_id, remove_success, remove_error
@@ -160,12 +163,12 @@ class SessionManager:
 
         if cli_session_id :
             # Usunięto powtórzoną definicję assistant = create_azor_assistant()
-            session, error = ChatSession.load_from_file(assistant=assistant, session_id=cli_session_id)
+            session, error = ChatSession.load_from_file(session_id=cli_session_id, mcp_handler=self._mcp_handler)
             
             if error:
                 console.print_error(error)
                 # Fallback to new session
-                session = ChatSession(assistant=assistant)
+                session = ChatSession(assistant=assistant, mcp_handler=self._mcp_handler)
                 console.print_info(f"Rozpoczęto nową sesję. ID: {session.session_id}")
             else:
                 # DODANO: Wyświetlenie tytułu przy ładowaniu
@@ -181,7 +184,7 @@ class SessionManager:
         else:
             print("Rozpoczynanie nowej sesji.")
             # Usunięto powtórzoną definicję assistant = create_azor_assistant()
-            session = ChatSession(assistant=assistant)
+            session = ChatSession(assistant=assistant, mcp_handler=self._mcp_handler)
             self._current_session = session
             # DODANO: Wyświetlenie tytułu nowej sesji
             console.print_info(f"Rozpoczęto nową sesję '{session.title}'. ID: {session.session_id}")

@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Any, Optional, Union
+from typing import List, Any, Optional, Union, Dict
 import os
 from files import session_files
 from files.wal import append_to_wal
@@ -26,7 +26,7 @@ class ChatSession:
     
     DEFAULT_TITLE = "New Session"
 
-    def __init__(self, assistant: Assistant, session_id: str | None = None, history: List[Any] | None = None, title: str | None = None):
+    def __init__(self, assistant: Assistant, session_id: str | None = None, history: List[Any] | None = None, title: str | None = None, mcp_handler: Optional[Any] = None):
         """
         Initialize a chat session.
         
@@ -35,6 +35,7 @@ class ChatSession:
             session_id: Unique session identifier. If None, generates a new UUID.
             history: Initial conversation history. If None, starts empty.
             title: Human-readable title of the session.
+            mcp_handler: Optional MCPHandler instance to be passed to the LLM client.
         """
         self.assistant = assistant
         self.session_id = session_id or str(uuid.uuid4())
@@ -43,6 +44,7 @@ class ChatSession:
         self._llm_client: Union[GeminiLLMClient, LlamaClient, None] = None
         self._llm_chat_session = None
         self._max_context_tokens = 32768
+        self._mcp_handler = mcp_handler # Store mcp_handler
         self._initialize_llm_session()
     
     def _initialize_llm_session(self):
@@ -60,7 +62,11 @@ class ChatSession:
         if self._llm_client is None:
             SelectedClientClass = ENGINE_MAPPING.get(engine, GeminiLLMClient)
             console.print_info(SelectedClientClass.preparing_for_use_message())
-            self._llm_client = SelectedClientClass.from_environment()
+            # Pass mcp_handler to the from_environment method if it's available
+            if self._mcp_handler and engine == 'GEMINI': # Only pass to Gemini client
+                self._llm_client = SelectedClientClass.from_environment(mcp_handler=self._mcp_handler)
+            else:
+                self._llm_client = SelectedClientClass.from_environment()
             console.print_info(self._llm_client.ready_for_use_message())
         
         self._llm_chat_session = self._llm_client.create_chat_session(
@@ -96,15 +102,17 @@ class ChatSession:
             if len(result) == 2:
                 history, error = result
                 title = None
+                mcp_handler = None # No mcp_handler in this case
             else:
                 history, title, assistant_name, error = result
+                mcp_handler = None # No mcp_handler in this case
 
             if error:
                 return None, error
             
             # Create new assistnat
             create_assistant_func = _ASSISTANT_FACTORY.get(assistant_name, create_azor_assistant)
-            session = cls(assistant=create_assistant_func(), session_id=session_id, history=history, title=title)
+            session = cls(assistant=create_assistant_func(), session_id=session_id, history=history, title=title, mcp_handler=mcp_handler)
             return session, None
             
         except ValueError as e:
@@ -198,9 +206,37 @@ class ChatSession:
             pass
         
         return response
+
+    def send_tool_response(self, tool_name: str, tool_response: Dict[str, Any]) -> Any:
+        """
+        Sends a tool response back to the LLM.
+        
+        Args:
+            tool_name: The name of the tool that was called.
+            tool_response: The response from the tool execution.
+            
+        Returns:
+            Response object from Google GenAI.
+        """
+        if not self._llm_chat_session:
+            raise RuntimeError("LLM session not initialized")
+
+        response = self._llm_chat_session.send_tool_response(tool_name, tool_response)
+
+        # Append the tool response to history
+        tool_response_entry = {"role": "function", "parts": [{'functionResponse': {'name': tool_name, 'response': tool_response}}]}
+        self._history.append(tool_response_entry)
+
+        # Update history with the model's response to the tool output
+        # The actual model response will be appended in the main loop of chat.py
+        # This method only appends the tool response itself.
+
+        return response
     
     def get_history(self) -> List[Any]:
-        """Zwraca aktualną historię konwersacji, synchronizując się z sesją LLM."""
+        """
+        Zwraca aktualną historię konwersacji, synchronizując się z sesją LLM.
+        """
         if not self._llm_chat_session:
             return self._history
             
@@ -248,7 +284,9 @@ class ChatSession:
         return self.title
     
     def clear_history(self):
-        """Clears all conversation history and reinitializes the LLM session."""
+        """
+        Clears all conversation history and reinitializes the LLM session.
+        """
         self._history = []
         self._initialize_llm_session()
         self.save_to_file()
@@ -376,7 +414,9 @@ class ChatSession:
             return None
     
     def set_assistant(self, new_assistant):
-        """Ustawia nowego asystenta dla tej sesji."""
+        """
+        Ustawia nowego asystenta dla tej sesji.
+        """
         self.assistant = new_assistant
     
     @property

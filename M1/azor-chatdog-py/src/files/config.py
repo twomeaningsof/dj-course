@@ -11,3 +11,9 @@ load_dotenv()
 
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
+
+def get_mcp_server_path() -> str:
+    """Returns the path to the MCP server executable."""
+    # Default path provided by the user
+    default_path = "C:/Users/igorr/Code/azor-session-files-mcp/dist/mcp-server.js"
+    return os.getenv('MCP_SERVER_PATH', default_path)

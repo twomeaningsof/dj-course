@@ -44,6 +44,14 @@ def print_info(message: str):
     """
     print(message)
 
+def print_tool_output(message: str):
+    """Print a message related to tool output in magenta color.
+
+    Args:
+        message: The tool output message to display
+    """
+    print(Fore.MAGENTA + message + Style.RESET_ALL)
+
 def print_help(message: str):
     """Print an informational message in yellow color.
     

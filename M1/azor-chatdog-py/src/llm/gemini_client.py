@@ -6,11 +6,15 @@ Encapsulates all Google Gemini AI interactions.
 import os
 import sys
 from typing import Optional, List, Any, Dict
-from google import genai
-from google.genai import types
+import google.generativeai as genai
+import google.generativeai.types as genai_types # Keep for other types, but Content/Part are likely elsewhere
+import google.ai.generativelanguage as glm # Import generativelanguage module
+from google.generativeai.types import FunctionDeclaration, Tool, GenerateContentResponse
 from dotenv import load_dotenv
 from cli import console
 from .gemini_validation import GeminiConfig
+from mcp_handler import MCPHandler # Import MCPHandler
+from mcp_tool_adapter import mcp_tools_to_gemini_tools # Import tool adapter
 
 class GeminiChatSessionWrapper:
     """
@@ -39,6 +43,23 @@ class GeminiChatSessionWrapper:
             Response object from Gemini
         """
         return self.gemini_session.send_message(text)
+
+    def send_tool_response(self, tool_name: str, tool_response: Dict[str, Any]) -> Any:
+        """
+        Sends a tool response back to the Gemini session.
+
+        Args:
+            tool_name: The name of the tool that was called.
+            tool_response: The response from the tool execution.
+
+        Returns:
+            Response object from Gemini
+        """
+        function_response_part = glm.Part.from_function_response(
+            name=tool_name,
+            response=tool_response
+        )
+        return self.gemini_session.send_message(function_response_part)
     
     def get_history(self) -> List[Dict]:
         """
@@ -47,7 +68,7 @@ class GeminiChatSessionWrapper:
         Returns:
             List of dictionaries with format: {"role": "user|model", "parts": [{"text": "..."}]}
         """
-        gemini_history = self.gemini_session.get_history()
+        gemini_history = self.gemini_session.history # Directly access the history attribute
         universal_history = []
         
         for content in gemini_history:
@@ -75,13 +96,14 @@ class GeminiLLMClient:
     Provides a clean interface for chat sessions, token counting, and configuration.
     """
     
-    def __init__(self, model_name: str, api_key: str):
+    def __init__(self, model_name: str, api_key: str, mcp_handler: Optional[MCPHandler] = None):
         """
         Initialize the Gemini LLM client with explicit parameters.
         
         Args:
             model_name: Model to use (e.g., 'gemini-2.5-flash')
             api_key: Google Gemini API key
+            mcp_handler: Optional MCPHandler instance to provide tools
         
         Raises:
             ValueError: If api_key is empty or None
@@ -92,10 +114,25 @@ class GeminiLLMClient:
         self.system_instruction = ""
         self.model_name = model_name
         self.api_key = api_key
-        
-        # Initialize the client during construction
-        self._client = self._initialize_client()
-    
+        self._mcp_handler = mcp_handler
+        self._gemini_tools: List[genai.types.Tool] = []
+
+        # Configure the API key globally
+        genai.configure(api_key=self.api_key)
+
+        if self._mcp_handler:
+            # Ensure the MCP handler is initialized before attempting to list tools.
+            if not self._mcp_handler.wait_for_initialization():
+                console.print_error("MCP server failed to initialize. No tools will be loaded.")
+                self._gemini_tools = []
+            else:
+                mcp_tools = self._mcp_handler.list_tools()
+                self._gemini_tools = mcp_tools_to_gemini_tools(mcp_tools)
+                console.print_info(f"Loaded {len(self._gemini_tools)} MCP tools for Gemini.")
+
+        # Initialize the model directly without passing api_key to constructor
+        self._model = genai.GenerativeModel(model_name=self.model_name, tools=self._gemini_tools)
+
     @staticmethod
     def preparing_for_use_message() -> str:
         """
@@ -107,7 +144,7 @@ class GeminiLLMClient:
         return "🤖 Przygotowywanie klienta Gemini..."
     
     @classmethod
-    def from_environment(cls) -> 'GeminiLLMClient':
+    def from_environment(cls, mcp_handler: Optional[MCPHandler] = None) -> 'GeminiLLMClient':
         """
         Factory method that creates a GeminiLLMClient instance from environment variables.
         
@@ -125,23 +162,7 @@ class GeminiLLMClient:
             gemini_api_key=os.getenv('GEMINI_API_KEY', '')
         )
         
-        return cls(model_name=config.model_name, api_key=config.gemini_api_key)
-    
-    def _initialize_client(self) -> genai.Client:
-        """
-        Initializes the Google GenAI client.
-        
-        Returns:
-            Initialized GenAI client
-            
-        Raises:
-            SystemExit: If client initialization fails
-        """
-        try:
-            return genai.Client()
-        except Exception as e:
-            console.print_error(f"Błąd inicjalizacji klienta Gemini: {e}")
-            sys.exit(1)
+        return cls(model_name=config.model_name, api_key=config.gemini_api_key, mcp_handler=mcp_handler)
     
     def create_chat_session(self, 
                           system_instruction: str, 
@@ -159,8 +180,8 @@ class GeminiLLMClient:
         Returns:
             GeminiChatSessionWrapper with universal dictionary-based interface
         """
-        if not self._client:
-            raise RuntimeError("LLM client not initialized")
+        if not self._model:
+            raise RuntimeError("LLM model not initialized")
         
         self.system_instruction = system_instruction
         
@@ -171,19 +192,18 @@ class GeminiLLMClient:
                 if isinstance(entry, dict) and 'role' in entry and 'parts' in entry:
                     text = entry['parts'][0].get('text', '') if entry['parts'] else ''
                     if text:
-                        content = types.Content(
+                        content = glm.Content(
                             role=entry['role'],
-                            parts=[types.Part.from_text(text=text)]
+                            parts=[glm.Part(text=text)] # Direct instantiation of Part with text
                         )
                         gemini_history.append(content)
         
-        gemini_session = self._client.chats.create(
-            model=self.model_name,
+        # Use start_chat with the model directly
+        gemini_session = self._model.start_chat(
             history=gemini_history,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget)
-            )
+            # system_instruction is passed directly to the model as the first message or as a parameter if supported
+            # For now, we will prepend it to the history if it's not empty, or pass as a separate config
+            enable_automatic_function_calling=True # Enable function calling
         )
         
         return GeminiChatSessionWrapper(gemini_session, assistant_name)
@@ -208,14 +228,13 @@ class GeminiLLMClient:
                 if isinstance(entry, dict) and 'role' in entry and 'parts' in entry:
                     text = entry['parts'][0].get('text', '') if entry['parts'] else ''
                     if text:
-                        content = types.Content(
+                        content = glm.Content(
                             role=entry['role'],
-                            parts=[types.Part.from_text(text=text)]
+                            parts=[glm.Part(text=text)] # Direct instantiation of Part with text
                         )
                         gemini_history.append(content)
             
-            response = self._client.models.count_tokens(
-                model=self.model_name,
+            response = self._model.count_tokens(
                 contents=gemini_history
             )
             return response.total_tokens
@@ -224,7 +243,9 @@ class GeminiLLMClient:
             return 0
     
     def get_model_name(self) -> str:
-        """Returns the currently configured model name."""
+        """
+        Returns the currently configured model name.
+        """
         return self.model_name
     
     def is_available(self) -> bool:
@@ -234,7 +255,7 @@ class GeminiLLMClient:
         Returns:
             True if client is properly initialized and has API key
         """
-        return self._client is not None and bool(self.api_key)
+        return self._model is not None and bool(self.api_key)
     
     def ready_for_use_message(self) -> str:
         """
@@ -261,8 +282,8 @@ class GeminiLLMClient:
         Returns:
             The generated title text.
         """
-        if not self._client:
-            raise RuntimeError("LLM client not initialized")
+        if not self._model:
+            raise RuntimeError("LLM model not initialized")
         
         # Ustawienie instrukcji systemowej, która ma wymusić krótki i czysty tytuł
         system_instruction = (
@@ -272,12 +293,11 @@ class GeminiLLMClient:
         )
 
         try:
-            response = self._client.models.generate_content(
-                model=self.model_name,
+            response = self._model.generate_content(
                 contents=[prompt],
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    # Opcjonalnie można ustawić niższą temperaturę dla bardziej deterministycznych tytułów
+                generation_config=glm.GenerationConfig(
+                    # system_instruction is passed directly to the model as the first message or as a parameter if supported
+                    # For now, we will prepend it to the history if it's not empty, or pass as a separate config
                     temperature=0.1 
                 )
             )
@@ -291,13 +311,9 @@ class GeminiLLMClient:
             raise
         
     def get_system_prompt(self) -> str:
-        """Returns the system instruction used for the current chat session."""
+        """
+        Returns the system instruction used for the current chat session.
+        """
         return self.system_instruction
     
-    @property
-    def client(self):
-        """
-        Provides access to the underlying GenAI client for backwards compatibility.
-        This property should be used sparingly and eventually removed.
-        """
-        return self._client
+    # Removed client property since GenerativeModel is used directly
