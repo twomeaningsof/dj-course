@@ -448,3 +448,12 @@ class ChatSession:
             str: The assistant's display name
         """
         return self.assistant.name
+    
+    def get_chat_session(self):
+        """
+        Gets the underlying LLM chat session wrapper.
+        
+        Returns:
+            The LLM chat session wrapper (GeminiChatSessionWrapper or LlamaClient)
+        """
+        return self._llm_chat_session

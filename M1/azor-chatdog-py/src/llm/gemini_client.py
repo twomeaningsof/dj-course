@@ -63,6 +63,29 @@ class GeminiChatSessionWrapper:
         )
         return self.gemini_session.send_message([function_response_part])
     
+    def display_clarification_request(self, question: str, reason: str, suggestions: Optional[List[str]] = None) -> None:
+        """
+        Displays a clarification request to the user.
+        This is called when the model uses the request_clarification tool.
+        
+        Args:
+            question: The question to ask the user
+            reason: Why clarification is needed
+            suggestions: Optional list of suggested answers
+        """
+        console.print_info(f"\n{'='*60}")
+        console.print_info(f"🤔 [{self.assistant_name}] WYMAGA WYJAŚNIENIA")
+        console.print_info(f"{'='*60}")
+        console.print_info(f"Powód: {reason}")
+        console.print_info(f"\nPytanie: {question}")
+        
+        if suggestions and len(suggestions) > 0:
+            console.print_info(f"\nSugerowane opcje:")
+            for i, suggestion in enumerate(suggestions, 1):
+                console.print_info(f"  {i}. {suggestion}")
+        
+        console.print_info(f"{'='*60}\n")
+    
     def get_history(self) -> List[Dict]:
         """
         Gets conversation history in universal dictionary format.
@@ -122,6 +145,7 @@ class GeminiLLMClient:
         # Configure the API key globally
         genai.configure(api_key=self.api_key)
 
+        # Build MCP tools if handler is provided
         if self._mcp_handler:
             capabilities = self._mcp_handler.wait_for_initialization()
             if capabilities is None:
@@ -131,8 +155,53 @@ class GeminiLLMClient:
                 self._gemini_tools = mcp_tools_to_gemini_tools(capabilities.get("tools", []))
                 console.print_info(f"Loaded {len(self._gemini_tools)} MCP tools for Gemini.")
 
-        # Initialize the model directly without passing api_key to constructor
-        self._model = genai.GenerativeModel(model_name=self.model_name, tools=self._gemini_tools)
+        # Create clarification tool and combine with MCP tools
+        self._clarification_tool = self._create_clarification_tool()
+        all_tools = list(self._gemini_tools)  # Copy MCP tools
+        all_tools.append(self._clarification_tool)  # Add clarification tool
+
+        # Initialize the model with all tools
+        self._model = genai.GenerativeModel(model_name=self.model_name, tools=all_tools)
+    
+    def _create_clarification_tool(self) -> genai.types.Tool:
+        """
+        Creates a Gemini tool for requesting user clarification.
+        The model can call this tool when it needs more information from the user.
+        
+        Returns:
+            Tool object with clarification function declaration
+        """
+        clarification_declaration = FunctionDeclaration(
+            name="request_clarification",
+            description=(
+                "Request clarification from the user when the information "
+                "provided is ambiguous, incomplete, or when you need more "
+                "details to provide an accurate response. Use this tool "
+                "when you're unsure about the user's intent or need "
+                "additional context."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The specific question to ask the user for clarification"
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Brief explanation of why clarification is needed"
+                    },
+                    "suggestions": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional list of suggested answers or options for the user"
+                    }
+                },
+                "required": ["question", "reason"]
+            }
+        )
+        
+        return Tool(function_declarations=[clarification_declaration])
 
     @staticmethod
     def preparing_for_use_message() -> str:

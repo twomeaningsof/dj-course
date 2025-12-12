@@ -144,6 +144,29 @@ def main_loop():
                         # Sanitize arguments to fix any string representations of arrays/objects
                         function_args = sanitize_tool_arguments(function_args)
                         
+                        # Handle clarification tool specially
+                        if function_name == "request_clarification":
+                            # Extract clarification parameters
+                            question = function_args.get("question", "Proszę o więcej szczegółów?")
+                            reason = function_args.get("reason", "Potrzebne dodatkowe informacje")
+                            suggestions = function_args.get("suggestions", None)
+                            
+                            # Display the clarification request using the session wrapper
+                            chat_session = session.get_chat_session()
+                            chat_session.display_clarification_request(question, reason, suggestions)
+                            
+                            # Get user's clarification response
+                            user_clarification = get_user_input()
+                            
+                            # Send the clarification back to the model as tool response
+                            tool_response = {"clarification": user_clarification}
+                            response = session.send_tool_response(function_name, tool_response)
+                            
+                            # Process the model's response after receiving clarification
+                            # Continue to handle any further tool calls or display final response
+                            continue
+                        
+                        # Handle MCP tools
                         console.print_info(f"Uruchamiam narzędzie: {function_name} z argumentami: {function_args}")
                         
                         # Execute the tool and get the result
