@@ -10,6 +10,9 @@ from prompt_toolkit.styles import Style
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.filters import completion_is_selected
 
+from cli.session_completer import SessionCompleter
+
+
 # --- Configuration ---
 SLASH_COMMANDS = ('/exit', '/quit', '/switch', '/help', '/session')
 SESSION_SUBCOMMANDS = ['list', 'display', 'pop', 'clear', 'new', 'remove']
@@ -17,7 +20,6 @@ SESSION_SUBCOMMANDS = ['list', 'display', 'pop', 'clear', 'new', 'remove']
 
 class SlashCommandLexer(Lexer):
     """Custom lexer to color slash commands and subcommands."""
-
     def lex_document(self, document):
         def get_line_tokens(lineno):
             line = document.lines[lineno]
@@ -70,7 +72,7 @@ _commands_completer = NestedCompleter({
     '/exit': None,
     '/quit': None,
     '/help': None,
-    '/switch': None,
+    '/switch': SessionCompleter(),
     '/session': WordCompleter(SESSION_SUBCOMMANDS, ignore_case=False)
 })
 

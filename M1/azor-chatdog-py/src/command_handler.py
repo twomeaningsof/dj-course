@@ -13,36 +13,31 @@ def handle_command(user_input: str) -> bool:
     """
     Handles slash commands. Returns True if the program should exit.
     """
-    # Zmieniono parsowanie, aby przechwycić resztę linii jako args
     parts = user_input.split(maxsplit=1) 
     command = parts[0].lower()
-    args = parts[1].strip() if len(parts) > 1 else "" # Cała reszta linii
+    args = parts[1].strip() if len(parts) > 1 else ""
 
     manager = get_session_manager()
 
-    # Check if the main command is valid
     if command not in VALID_SLASH_COMMANDS:
         console.print_error(f"Błąd: Nieznana komenda: {command}. Użyj /help.")
         current = manager.get_current_session()
         console.display_help(current.session_id)
         return False
     
-    # Help command
     elif command == '/help':
         current = manager.get_current_session()
         console.display_help(current.session_id)
     
-    # Exit commands
     if command in ['/exit', '/quit']:
         console.print_info("\nZakończenie czatu. Uruchamianie procedury finalnego zapisu...")
         return True
     
-    # Switch command
     elif command == '/switch':
-        if not args: # Używamy teraz args zamiast len(parts) == 2
+        if not args:
             console.print_error("Błąd: Użycie: /switch <SESSION-ID>")
         else:
-            new_id = args # new_id to cała reszta linii
+            new_id = args
             current = manager.get_current_session()
             if new_id == current.session_id:
                 console.print_info("Jesteś już w tej sesji.")
@@ -68,7 +63,7 @@ def handle_command(user_input: str) -> bool:
             
     # Session subcommands
     elif command == '/session':
-        if not args: # Używamy args
+        if not args:
             console.print_error("Błąd: Komenda /session wymaga podkomendy (list, display, pop, clear, new, remove, rename).") 
         else:
             # PRZEKAZUJEMY CAŁE ARGUMENTY
@@ -82,9 +77,7 @@ def handle_command(user_input: str) -> bool:
 
 
 def handle_session_subcommand(subcommand_line: str, manager):
-    """Handles /session subcommands."""
-    
-    # Parsowanie podkomendy i jej argumentów
+    """Handles /session subcommands."""    
     sub_parts = subcommand_line.split(maxsplit=1)
     subcommand = sub_parts[0].lower()
     sub_args = sub_parts[1].strip() if len(sub_parts) > 1 else ""

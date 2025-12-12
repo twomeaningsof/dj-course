@@ -78,12 +78,13 @@ class ChatSession:
     
     
     @classmethod
-    def load_from_file(cls, session_id: str) -> tuple['ChatSession | None', str | None]:
+    def load_from_file(cls, session_id: str, mcp_handler: Optional[Any] = None) -> tuple['ChatSession | None', str | None]:
         """
         Loads a session from disk.
         
         Args:
             session_id: ID of the session to load
+            mcp_handler: Optional MCPHandler instance to be passed to the LLM client.
             
         Returns:
             tuple: (ChatSession object or None, error_message or None)
@@ -102,10 +103,9 @@ class ChatSession:
             if len(result) == 2:
                 history, error = result
                 title = None
-                mcp_handler = None # No mcp_handler in this case
+                assistant_name = 'AZOR'  # Default assistant for backward compatibility
             else:
                 history, title, assistant_name, error = result
-                mcp_handler = None # No mcp_handler in this case
 
             if error:
                 return None, error
