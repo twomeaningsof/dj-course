@@ -174,9 +174,18 @@ class ChatSession:
         self._history.append(user_entry)
         
         
+        assistant_entry_parts = []
+        if response.parts:
+            for part in response.parts:
+                if part.text:
+                    assistant_entry_parts.append({"text": part.text})
+                elif part.function_call:
+                    # Handle function call in history if needed, for now, just skip adding to text parts
+                    pass
+        
         assistant_entry = {
             "role": "model",
-            "parts": [{"text": response.text}],
+            "parts": assistant_entry_parts,
             "assistant_name": self.assistant.name 
         }
         
@@ -193,10 +202,21 @@ class ChatSession:
         
         # 4. Log do WAL
         total_tokens = self.count_tokens()
+
+        # Extract text for WAL logging
+        wal_response_text = ""
+        if response.parts:
+            for part in response.parts:
+                if part.text:
+                    wal_response_text = part.text
+                    break
+        if not wal_response_text and any(part.function_call for part in response.parts if response.parts): # Check if there was a function call if no text was found
+            wal_response_text = "Tool call made"
+
         success, error = append_to_wal(
             session_id=self.session_id,
             prompt=text,
-            response_text=response.text,
+            response_text=wal_response_text,
             total_tokens=total_tokens,
             model_name=self._llm_client.get_model_name()
         )

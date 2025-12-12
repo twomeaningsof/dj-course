@@ -8,6 +8,83 @@ from cli.prompt import get_user_input
 from commands.welcome import print_welcome
 from mcp_handler import MCPHandler # Import MCPHandler
 
+def protobuf_to_dict(obj):
+    """
+    Recursively converts protobuf objects to native Python types.
+    Handles MapComposite, RepeatedComposite, and other protobuf types.
+    """
+    from google.protobuf.internal.containers import MessageMap, ScalarMap, RepeatedCompositeFieldContainer, RepeatedScalarFieldContainer
+    from google.protobuf.struct_pb2 import ListValue, Struct, Value
+    
+    if isinstance(obj, dict):
+        return {k: protobuf_to_dict(v) for k, v in obj.items()}
+    elif isinstance(obj, (MessageMap, ScalarMap)):
+        # MapComposite - convert to dict and recurse
+        return {k: protobuf_to_dict(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, RepeatedCompositeFieldContainer, RepeatedScalarFieldContainer)):
+        # RepeatedComposite - convert to list and recurse
+        return [protobuf_to_dict(item) for item in obj]
+    elif isinstance(obj, (ListValue, Struct)):
+        # Protobuf special types
+        return protobuf_to_dict(dict(obj))
+    elif isinstance(obj, Value):
+        # Protobuf Value wrapper
+        return protobuf_to_dict(obj.WhichOneof('kind'))
+    elif isinstance(obj, (str, int, float, bool, type(None))):
+        # Primitive types
+        return obj
+    else:
+        # Try to convert to dict if it has items() method
+        if hasattr(obj, 'items'):
+            return {k: protobuf_to_dict(v) for k, v in obj.items()}
+        # Try to convert to string as fallback
+        return str(obj)
+
+def sanitize_tool_arguments(args: dict) -> dict:
+    """
+    Sanitizes tool arguments to ensure proper types.
+    Detects and fixes string representations of arrays or objects.
+    
+    Args:
+        args: Dictionary of tool arguments
+        
+    Returns:
+        Sanitized dictionary with proper types
+    """
+    import ast
+    import json
+    
+    sanitized = {}
+    for key, value in args.items():
+        if isinstance(value, str):
+            # Check if it looks like a string representation of a list or dict
+            if (value.startswith('[') and value.endswith(']')) or \
+               (value.startswith('{') and value.endswith('}')):
+                try:
+                    # Try to safely evaluate it as a Python literal
+                    sanitized[key] = ast.literal_eval(value)
+                    console.print_info(f"Converted string '{key}' to proper type: {type(sanitized[key]).__name__}")
+                except (ValueError, SyntaxError):
+                    try:
+                        # Try JSON parsing as fallback
+                        sanitized[key] = json.loads(value)
+                        console.print_info(f"Converted JSON string '{key}' to proper type: {type(sanitized[key]).__name__}")
+                    except json.JSONDecodeError:
+                        # If both fail, keep as string
+                        sanitized[key] = value
+            else:
+                sanitized[key] = value
+        elif isinstance(value, dict):
+            # Recursively sanitize nested dicts
+            sanitized[key] = sanitize_tool_arguments(value)
+        elif isinstance(value, list):
+            # Recursively sanitize list items if they're dicts
+            sanitized[key] = [sanitize_tool_arguments(item) if isinstance(item, dict) else item for item in value]
+        else:
+            sanitized[key] = value
+    
+    return sanitized
+
 def init_chat():
     """Initializes a new session or loads an existing one."""
     print_welcome()
@@ -59,7 +136,14 @@ def main_loop():
                     if part.function_call:
                         function_call = part.function_call
                         function_name = function_call.name
-                        function_args = {k: v for k, v in function_call.args.items()}
+                        
+                        # Convert Protobuf Struct to Python dict
+                        # Use helper function to recursively convert all protobuf types
+                        function_args = protobuf_to_dict(function_call.args)
+                        
+                        # Sanitize arguments to fix any string representations of arrays/objects
+                        function_args = sanitize_tool_arguments(function_args)
+                        
                         console.print_info(f"Uruchamiam narzędzie: {function_name} z argumentami: {function_args}")
                         
                         # Execute the tool and get the result

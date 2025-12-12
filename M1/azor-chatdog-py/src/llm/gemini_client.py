@@ -55,11 +55,13 @@ class GeminiChatSessionWrapper:
         Returns:
             Response object from Gemini
         """
-        function_response_part = glm.Part.from_function_response(
-            name=tool_name,
-            response=tool_response
+        function_response_part = glm.Part(
+            function_response=glm.FunctionResponse(
+                name=tool_name,
+                response=tool_response
+            )
         )
-        return self.gemini_session.send_message(function_response_part)
+        return self.gemini_session.send_message([function_response_part])
     
     def get_history(self) -> List[Dict]:
         """
@@ -121,13 +123,12 @@ class GeminiLLMClient:
         genai.configure(api_key=self.api_key)
 
         if self._mcp_handler:
-            # Ensure the MCP handler is initialized before attempting to list tools.
-            if not self._mcp_handler.wait_for_initialization():
+            capabilities = self._mcp_handler.wait_for_initialization()
+            if capabilities is None:
                 console.print_error("MCP server failed to initialize. No tools will be loaded.")
                 self._gemini_tools = []
             else:
-                mcp_tools = self._mcp_handler.list_tools()
-                self._gemini_tools = mcp_tools_to_gemini_tools(mcp_tools)
+                self._gemini_tools = mcp_tools_to_gemini_tools(capabilities.get("tools", []))
                 console.print_info(f"Loaded {len(self._gemini_tools)} MCP tools for Gemini.")
 
         # Initialize the model directly without passing api_key to constructor
@@ -203,7 +204,7 @@ class GeminiLLMClient:
             history=gemini_history,
             # system_instruction is passed directly to the model as the first message or as a parameter if supported
             # For now, we will prepend it to the history if it's not empty, or pass as a separate config
-            enable_automatic_function_calling=True # Enable function calling
+            enable_automatic_function_calling=False # Disable automatic function calling - we handle it manually
         )
         
         return GeminiChatSessionWrapper(gemini_session, assistant_name)
