@@ -212,6 +212,15 @@
                 </div>
 
                 <div style="margin-top:15px; border-top: 1px solid #555; padding-top:10px;">
+                    <div class="stat-row">Wybierz samochód:
+                        <select id="car-selector" onchange="game.switchCar(this.value)">
+                            <option value="standard" selected>Standard</option>
+                            <option value="suv">SUV</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="margin-top:15px; border-top: 1px solid #555; padding-top:10px;">
                     <div class="stat-row">Prędkość: <span class="stat-val" id="ui-speed">0 km/h</span></div>
                     <div class="stat-row">Skręt: <span class="stat-val" id="ui-steer">0°</span></div>
                     <div class="stat-row">Silnik: <span class="stat-val" id="ui-engine">ON</span></div>
@@ -928,11 +937,13 @@
         }
 
         class PlayerCar {
-            constructor(x, y, angleDeg) {
-                this.reset(x, y, angleDeg);
+            constructor(x, y, angleDeg, carType = 'standard') {
+                this.carType = carType;
+                this.reset(x, y, angleDeg, carType);
             }
 
-            reset(x, y, angleDeg) {
+            reset(x, y, angleDeg, carType = 'standard') {
+                this.carType = carType;
                 this.x = x;
                 this.y = y;
                 this.angle = angleDeg * (Math.PI / 180);
@@ -1565,7 +1576,7 @@
                 this.currentLevelIdx = 0;
                 this.state = 'TITLE_SCREEN';
                 this.bonkPos = { x: 0, y: 0 };
-                this.player = new PlayerCar(0, 0, 0);
+                this.player = new PlayerCar(0, 0, 0, 'standard');
                 this.currentParkingZones = [];
                 this.isMusicOn = true;
 
@@ -1606,6 +1617,18 @@
                     music.pause();
                     btn.innerText = 'Dźwięk: WYŁ';
                 }
+            }
+
+            switchCar(carType) {
+                if (carType === 'standard') {
+                    CONFIG.carWidth = 44;
+                    CONFIG.carLength = 90;
+                } else if (carType === 'suv') {
+                    CONFIG.carWidth = 50;
+                    CONFIG.carLength = 115;
+                }
+                this.player = new PlayerCar(0, 0, 0, carType); // Recreate player car with new dimensions
+                this.loadLevel(this.currentLevelIdx); // Reset current level
             }
 
             defineLevels() {
