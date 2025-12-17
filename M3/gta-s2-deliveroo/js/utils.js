@@ -1,5 +1,5 @@
 // --- COLLAPSIBLE SECTIONS ---
-function toggleSection(sectionId) {
+export function toggleSection(sectionId) {
     const content = document.getElementById(sectionId + '-content');
     const icon = document.getElementById(sectionId + '-icon');
 
@@ -13,8 +13,8 @@ function toggleSection(sectionId) {
 }
 
 // --- UTILS ---
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-function playBonkSound() {
+export const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+export function playBonkSound() {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
@@ -29,7 +29,7 @@ function playBonkSound() {
     osc.stop(audioCtx.currentTime + 0.6);
 }
 
-function playCurbSound() {
+export function playCurbSound() {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
@@ -45,10 +45,10 @@ function playCurbSound() {
 }
 
 // Dźwięk piszczących opon podczas poślizgu
-let driftOscillator = null;
-let driftGain = null;
+export let driftOscillator = null;
+export let driftGain = null;
 
-function startDriftSound(intensity = 1.0) {
+export function startDriftSound(intensity = 1.0) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
 
     // Jeśli już gra, nie twórz nowego
@@ -68,7 +68,7 @@ function startDriftSound(intensity = 1.0) {
     driftOscillator.start();
 }
 
-function updateDriftSound(intensity = 1.0) {
+export function updateDriftSound(intensity = 1.0) {
     if (!driftOscillator || !driftGain) return;
 
     const now = audioCtx.currentTime;
@@ -76,7 +76,7 @@ function updateDriftSound(intensity = 1.0) {
     driftGain.gain.setValueAtTime(0.15 * intensity, now);
 }
 
-function stopDriftSound() {
+export function stopDriftSound() {
     if (!driftOscillator || !driftGain) return;
 
     const now = audioCtx.currentTime;
@@ -92,10 +92,10 @@ function stopDriftSound() {
 }
 
 // Dźwięk silnika na wysokich obrotach (revving)
-let engineRevOscillator = null;
-let engineRevGain = null;
+export let engineRevOscillator = null;
+export let engineRevGain = null;
 
-function startEngineRevSound(revLevel = 0.5) {
+export function startEngineRevSound(revLevel = 0.5) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
 
     // Jeśli już gra, nie twórz nowego
@@ -115,7 +115,7 @@ function startEngineRevSound(revLevel = 0.5) {
     engineRevOscillator.start();
 }
 
-function updateEngineRevSound(revLevel = 0.5) {
+export function updateEngineRevSound(revLevel = 0.5) {
     if (!engineRevOscillator || !engineRevGain) return;
 
     const now = audioCtx.currentTime;
@@ -123,7 +123,7 @@ function updateEngineRevSound(revLevel = 0.5) {
     engineRevGain.gain.setValueAtTime(0.12 * revLevel, now);
 }
 
-function stopEngineRevSound() {
+export function stopEngineRevSound() {
     if (!engineRevOscillator || !engineRevGain) return;
 
     const now = audioCtx.currentTime;
@@ -139,7 +139,7 @@ function stopEngineRevSound() {
 }
 
 
-function playLevelCompleteSound() {
+export function playLevelCompleteSound() {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const gain = audioCtx.createGain();
     gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
@@ -157,7 +157,7 @@ function playLevelCompleteSound() {
 }
 
 // Geometric Utils
-function getCorners(x, y, w, h, angle) {
+export function getCorners(x, y, w, h, angle) {
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     const hw = w / 2;
@@ -170,7 +170,7 @@ function getCorners(x, y, w, h, angle) {
     ];
 }
 
-function projectPolygon(axis, corners) {
+export function projectPolygon(axis, corners) {
     let min = Infinity;
     let max = -Infinity;
     for (let p of corners) {
@@ -181,11 +181,11 @@ function projectPolygon(axis, corners) {
     return { min, max };
 }
 
-function overlap(a, b) {
+export function overlap(a, b) {
     return !(a.min > b.max || b.min > a.max);
 }
 
-function checkRectCollision(rectA, rectB) {
+export function checkRectCollision(rectA, rectB) {
     const cornersA = getCorners(rectA.x, rectA.y, rectA.w, rectA.l, rectA.angle);
     const cornersB = getCorners(rectB.x, rectB.y, rectB.w, rectB.l, rectB.angle);
     const axes = [
@@ -202,7 +202,7 @@ function checkRectCollision(rectA, rectB) {
     return true;
 }
 
-function checkCircleRectCollision(circle, rect) {
+export function checkCircleRectCollision(circle, rect) {
     const cos = Math.cos(-rect.angle);
     const sin = Math.sin(-rect.angle);
     const dx = circle.x - rect.x;
@@ -216,7 +216,7 @@ function checkCircleRectCollision(circle, rect) {
     return (distanceX * distanceX) + (distanceY * distanceY) < (circle.r * circle.r);
 }
 
-function isPointInRotatedRect(point, rect) {
+export function isPointInRotatedRect(point, rect) {
     const cos = Math.cos(-rect.angle);
     const sin = Math.sin(-rect.angle);
     const dx = point.x - rect.x;

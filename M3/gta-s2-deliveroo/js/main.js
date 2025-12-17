@@ -4,7 +4,7 @@ import Game from './Game.js';
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-export const input = new InputHandler();
+const input = new InputHandler();
 export let game;
 
 function loadNextLevel() {
@@ -107,7 +107,8 @@ canvas.addEventListener('click', (e) => {
 });
 
 window.onload = function () {
-    game = new Game();
+    game = new Game(ctx, canvas, input);
+    window.game = game; // Dodaj tę linię, aby udostępnić 'game' globalnie
     window.addEventListener('resize', resize);
     resize(); // Initial resize and level load
     loop();
