@@ -58,23 +58,23 @@ export const WarehouseContent = forwardRef<WarehouseContentRef, {}>((props, ref)
               const zoneIndex = uniqueZones.indexOf(tile.zone);
               // Determine which directions have an adjacent aisle (strict rule)
               const labelDirections: Array<'north' | 'south' | 'east' | 'west'> = [];
-              
+
               // Check each direction for adjacent aisle
               const northTile = warehouseMap.getTile(rowIndex + 1, colIndex);
               if (northTile && northTile.type === TILE_TYPES.AISLE) {
                 labelDirections.push('north');
               }
-              
+
               const southTile = warehouseMap.getTile(rowIndex - 1, colIndex);
               if (southTile && southTile.type === TILE_TYPES.AISLE) {
                 labelDirections.push('south');
               }
-              
+
               const eastTile = warehouseMap.getTile(rowIndex, colIndex + 1);
               if (eastTile && eastTile.type === TILE_TYPES.AISLE) {
                 labelDirections.push('east');
               }
-              
+
               const westTile = warehouseMap.getTile(rowIndex, colIndex - 1);
               if (westTile && westTile.type === TILE_TYPES.AISLE) {
                 labelDirections.push('west');
@@ -101,14 +101,14 @@ export const WarehouseContent = forwardRef<WarehouseContentRef, {}>((props, ref)
               // Check if this is a lamp position (from original '+' character)
               const originalChar = warehouseMap.getStringMap()[rowIndex]?.[colIndex];
               const isLampPosition = originalChar === '+';
-              
+
               return (
                 <group key={`${rowIndex}-${colIndex}`}>
                   <FloorTile position={position} type="aisle" />
                   {isLampPosition && (
-                    <HangingLamp 
-                      position={[worldPos.x, 7.5, worldPos.z]} 
-                      cableLength={2.5} 
+                    <HangingLamp
+                      position={[worldPos.x, 7.5, worldPos.z]}
+                      cableLength={2.5}
                     />
                   )}
                 </group>
@@ -118,7 +118,7 @@ export const WarehouseContent = forwardRef<WarehouseContentRef, {}>((props, ref)
           })
         );
       })()}
-      
+
       {/* Animated Soldiers */}
       {SOLDIER_POSITIONS.map((pos, index) => {
         const worldPos = getWorldPosition(pos.row, pos.col);
@@ -126,7 +126,7 @@ export const WarehouseContent = forwardRef<WarehouseContentRef, {}>((props, ref)
           <Soldier
             ref={el => soldierRefs.current[index] = el}
             key={`soldier-${index}`}
-            position={[worldPos.x, 0, worldPos.z]}
+            initialPosition={[worldPos.x, 0, worldPos.z]}
           />
         );
       })}
