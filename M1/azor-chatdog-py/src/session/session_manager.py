@@ -1,6 +1,6 @@
 from cli import console
 from .chat_session import ChatSession
-from assistant import create_azor_assistant, create_perfectionist_assistant, create_empathetic_assistant
+from assistant import create_azor_assistant, create_perfectionist_assistant, create_empathetic_assistant, create_angel_investor_assistant, create_sparing_partner_assistant
 from files import session_files
 from typing import List, Dict, Any, Optional 
 
@@ -15,7 +15,14 @@ class SessionManager:
         'AZOR': create_azor_assistant,
         'PERFECTIONIST': create_perfectionist_assistant,
         'EMPATHETIC': create_empathetic_assistant,
+        'ANGEL': create_angel_investor_assistant,
+        'SPARING': create_sparing_partner_assistant,
     }
+
+    @classmethod
+    def get_available_assistant_types(cls) -> List[str]:
+        """Returns a list of available assistant types."""
+        return list(cls._ASSISTANT_FACTORY.keys())
     
     def __init__(self, mcp_handler: Optional[Any] = None):
         """Initializes with no active session."""
